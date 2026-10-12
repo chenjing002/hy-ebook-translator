@@ -321,13 +321,16 @@ def cmd_status(args, cfg) -> int:
     print(f"  model        {cfg.model.repo}")
     local = dl.local_dir(cfg.root, cfg.model.repo)
     if local.exists():
-        have = sum(f.stat().st_size for f in local.rglob("*") if f.is_file())
+        have = sum(f.stat().st_size for f in local.iterdir() if f.is_file())
+        parts = local / ".parts"
+        partial = sum(f.stat().st_size for f in parts.rglob("*.part")) if parts.exists() else 0
         try:
             missing = dl.missing_bytes(cfg.root, cfg.model.repo)
         except Exception:
             missing = 0
         state = "complete" if missing == 0 else f"{human(missing)} remaining"
-        print(f"  weights      {local.relative_to(cfg.root)}  ({human(have)}, {state})")
+        progress = f", {human(partial)} in resumable ranges" if partial else ""
+        print(f"  weights      {local.relative_to(cfg.root)}  ({human(have)} on disk{progress}, {state})")
     elif model_info(cfg.model.repo).downloaded:
         print("  weights      in the HuggingFace cache")
     else:
