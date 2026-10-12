@@ -134,7 +134,18 @@ async function initReader() {
 
   marked.setOptions({ gfm: true, breaks: false, headerIds: true, mangle: false });
   const math = extractMath(stripProvenance(markdown));
-  article.innerHTML = marked.parse(math.text);
+  const rendered = document.createElement('template');
+  rendered.innerHTML = marked.parse(math.text);
+  // Converted ebooks can contain expired image URLs. Keep the Markdown file
+  // intact, but omit images from the reading page before inserting the DOM.
+  for (const img of rendered.content.querySelectorAll('img')) {
+    const parent = img.parentElement;
+    img.remove();
+    if (parent?.tagName === 'P' && !parent.textContent.trim() && !parent.children.length) {
+      parent.remove();
+    }
+  }
+  article.replaceChildren(rendered.content);
 
   tagOriginals(article);
   renderMath(article, math.spans);

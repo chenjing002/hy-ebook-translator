@@ -170,6 +170,8 @@ file in `outputs/` — there is only ever one copy of a translation.
   height for the translation, a smaller quieter setting for the original.
 - Language toggle, text size, table of contents with scroll spy, reading
   progress, light/dark, and a layout that works at phone width.
+- Images in Markdown are omitted from the reading page by default. Their source
+  references remain in the bilingual Markdown for fidelity and later repair.
 
 To enable Pages the first time:
 
