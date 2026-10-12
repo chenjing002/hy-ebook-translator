@@ -1,10 +1,23 @@
 {
-  "generated": "2026-10-12T11:37:44",
+  "generated": "2026-10-12T15:05:31",
   "title": "双语书架",
   "subtitle": "Bilingual Library · 本地 Hy-MT2 翻译",
   "model": "mlx-community/Hy-MT2-7B-8bit",
   "direction": "English → Simplified Chinese",
   "documents": [
+    {
+      "file": "浑水做空辉山乳业报告.md",
+      "title": "China Huishan Dairy (6863 HK): A Near Zero",
+      "title_zh": "中国辉山乳业（6863 HK）：价值接近零",
+      "excerpt": "我们看空中国辉山乳业控股（6863 HK/“辉山”），因为我们认为其价值接近零。我们认定辉山存在欺诈行为。在这份关于辉山的初步报告中，我们将详细阐述相关结论及支撑证据。",
+      "cjk_chars": 23004,
+      "words": 22801,
+      "sections": 21,
+      "minutes": 161,
+      "bytes": 245879,
+      "updated": "2026-10-12",
+      "updated_ts": 1791842731
+    },
     {
       "file": "mlx-primer.md",
       "title": "A Short Primer on Apple MLX",
