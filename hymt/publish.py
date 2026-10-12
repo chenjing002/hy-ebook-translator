@@ -20,7 +20,7 @@ from .config import Config
 TRACKED = [
     "index.html", "reader.html", "library.json", ".nojekyll", ".gitignore",
     "README.md", "config.toml", "pyproject.toml", "requirements.txt", "hy",
-    "assets", "hymt", "outputs", "tests",
+    "assets", "hymt", "outputs", "scripts", "tests",
 ]
 
 

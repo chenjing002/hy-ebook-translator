@@ -238,6 +238,12 @@ a real weight file and uses whichever is fastest:
 
 Pin one with `./hy setup --endpoint https://www.modelscope.cn`.
 
+If a large weight transfer repeatedly times out while small HTTP ranges work,
+run `python3 scripts/download_parallel.py --workers 16`. It downloads small
+resumable ranges in parallel and verifies each shard against Hugging Face's
+SHA-256 digest. After it finishes, `./hy setup` checks the remaining small
+metadata files.
+
 ### Other language pairs
 
 The direction is configuration, not code:
