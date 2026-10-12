@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>双语书架 · Bilingual Library</title>
+<meta name="description" content="Locally translated bilingual Markdown documents, rendered for Chinese–English reading.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<nav class="bar">
+  <a class="home" href="index.html">双语书架</a>
+  <span class="spacer"></span>
+  <span id="count" class="doc-title" style="flex:0 0 auto;text-align:right"></span>
+  <button id="theme-btn" class="chip" type="button" aria-label="Toggle theme">☀</button>
+</nav>
+
+<main class="wrap">
+  <header class="masthead">
+    <h1>双语书架</h1>
+    <p>Hy-MT2 · 本地翻译的中英对照文库 &nbsp;·&nbsp; translated on-device with Apple MLX</p>
+  </header>
+
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="搜索标题 / search titles…" autocomplete="off" spellcheck="false">
+  </div>
+
+  <section id="shelf" class="shelf" aria-live="polite">
+    <p class="empty">Loading…</p>
+  </section>
+</main>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

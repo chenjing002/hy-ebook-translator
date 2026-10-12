@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Downloaded model weights — gigabytes, and re-fetchable with `./hy setup`
+models/
+
+# Pipeline state (local only; holds resume checkpoints + translation cache)
+.state/
+
+# macOS
+.DS_Store
+
+# Local overrides
+config.local.toml
+
+# Source ebooks are kept local by default (see [publish].include_inputs)
+inputs/*
+!inputs/.gitkeep

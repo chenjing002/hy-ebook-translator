@@ -1,0 +1,2 @@
+# Local inference on Apple Silicon. Nothing here talks to a translation API.
+mlx-lm>=0.28

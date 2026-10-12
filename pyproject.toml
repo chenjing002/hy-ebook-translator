@@ -1,0 +1,16 @@
+[project]
+name = "hy-ebook-translator"
+version = "1.0.0"
+description = "Local Markdown translation and bilingual publishing pipeline (Hy-MT2 on Apple MLX)"
+requires-python = ">=3.10"
+dependencies = ["mlx-lm>=0.28"]
+
+[project.scripts]
+hy = "hymt.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["hymt"]
