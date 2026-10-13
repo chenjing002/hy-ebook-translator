@@ -206,6 +206,13 @@ class TestConvertedHtml(unittest.TestCase):
         original = {u.uid: u.text for u in block.units}
         self.assertEqual(block.render_target(original.__getitem__), src)
 
+    def test_html_table_splits_literal_line_breaks_between_label_and_value(self):
+        src = r'<table><tr><td>Report Date:\nDecember 16, 2016</td></tr></table>'
+        block = parse_markdown(src)[0]
+        self.assertEqual([u.text for u in block.units], ['Report Date:', 'December 16, 2016'])
+        original = {u.uid: u.text for u in block.units}
+        self.assertEqual(block.render_target(original.__getitem__), src)
+
     def test_preparation_breaks_long_prose_and_keeps_tables_exact(self):
         prose = "This is a sufficiently long sentence about revenue. " * 8
         table = "<table><tr><td>Revenue</td><td>12.4</td></tr></table>"

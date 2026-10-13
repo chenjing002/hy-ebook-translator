@@ -611,16 +611,22 @@ def _html_table_units(raw: str, uid: Callable[[], str]) -> tuple[list[Unit], lis
         if not cell_depth or not text.strip():
             parts.append(("literal", text))
             return
-        prefix = text[:len(text) - len(text.lstrip())]
-        suffix = text[len(text.rstrip()):]
-        body = text.strip()
-        if prefix:
-            parts.append(("literal", prefix))
-        unit = Unit(uid(), "html_cell", body)
-        units.append(unit)
-        parts.append(("unit", unit.uid))
-        if suffix:
-            parts.append(("literal", suffix))
+        # PDF converters often put a literal "\\n" between a label and a
+        # value in one cell. Treating it as prose confuses short translations
+        # such as dates; preserve the separator and translate both sides.
+        for fragment in re.split(r"(\\n|\n)", text):
+            if fragment in {"\\n", "\n"} or not fragment.strip():
+                parts.append(("literal", fragment))
+                continue
+            prefix = fragment[:len(fragment) - len(fragment.lstrip())]
+            suffix = fragment[len(fragment.rstrip()):]
+            if prefix:
+                parts.append(("literal", prefix))
+            unit = Unit(uid(), "html_cell", fragment.strip())
+            units.append(unit)
+            parts.append(("unit", unit.uid))
+            if suffix:
+                parts.append(("literal", suffix))
 
     for match in HTML_TOKEN_RE.finditer(raw):
         add_text(raw[pos:match.start()])
