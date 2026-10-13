@@ -1,10 +1,10 @@
 """Markdown block parser.
 
 The pipeline never hands raw Markdown to the model. It first splits a document
-into typed blocks, so that code fences, display math, HTML and reference
-definitions can be passed through byte-for-byte while only the prose is
-translated. Every block can rebuild itself from translated segments, which is
-what keeps tables, nested lists and blockquotes structurally intact.
+into typed blocks, so that code fences, display math, non-table HTML and
+reference definitions can be passed through byte-for-byte while prose and
+table cells are translated. Every block can rebuild itself from translated
+segments, which keeps tables, nested lists and blockquotes structurally intact.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
 # Blocks whose text is translated.
-PROSE_KINDS = {"paragraph", "heading", "list", "table", "blockquote", "footnote"}
+PROSE_KINDS = {"paragraph", "heading", "list", "table", "html_table", "blockquote", "footnote"}
 # Blocks emitted verbatim, exactly once, with no translation.
 PASSTHROUGH_KINDS = {"code", "math", "html", "hr", "front_matter", "linkdef"}
 
@@ -42,6 +42,8 @@ VOID_TAGS = {
     "param", "source", "track", "wbr",
 }
 HTML_TAG_RE = re.compile(r"<(?P<close>/?)(?P<name>[A-Za-z][A-Za-z0-9-]*)(?P<attrs>[^<>]*)>")
+HTML_TOKEN_RE = re.compile(r"<!--.*?-->|<(?:\"[^\"]*\"|'[^']*'|[^'\">])*>", re.DOTALL)
+HTML_CELL_RE = re.compile(r"<\s*(/?)\s*(td|th|caption)\b", re.IGNORECASE)
 
 MATH_ENVS = {
     "equation", "equation*", "align", "align*", "aligned", "gather", "gather*",
@@ -136,6 +138,11 @@ def _render_table(block: Block, zh: Callable[[str], str]) -> str:
     return "\n".join(lines)
 
 
+def _render_html_table(block: Block, zh: Callable[[str], str]) -> str:
+    return "".join(zh(value) if kind == "unit" else value
+                   for kind, value in block.meta["parts"])
+
+
 def _render_blockquote(block: Block, zh: Callable[[str], str]) -> str:
     rendered = render_blocks(block.meta["inner"], zh)
     out = []
@@ -150,6 +157,7 @@ _RENDERERS: dict[str, Callable[[Block, Callable[[str], str]], str]] = {
     "footnote": _render_footnote,
     "list": _render_list,
     "table": _render_table,
+    "html_table": _render_html_table,
     "blockquote": _render_blockquote,
 }
 
@@ -304,7 +312,12 @@ class _Parser:
             while limit < len(self.lines) and self.lines[limit].strip():
                 limit += 1
             self.i = _html_end(self.lines, self.i, limit)
-        self.emit("html", "\n".join(self.lines[start:self.i]))
+        raw = "\n".join(self.lines[start:self.i])
+        if line.lstrip().lower().startswith("<table"):
+            units, parts = _html_table_units(raw, self.uid)
+            self.emit("html_table", raw, units=units, parts=parts)
+        else:
+            self.emit("html", raw)
         return True
 
     def _footnote(self) -> bool:
@@ -583,6 +596,40 @@ def _html_end(lines: list[str], start: int, limit: int) -> int:
         if depth <= 0:
             return j + 1
     return limit
+
+
+def _html_table_units(raw: str, uid: Callable[[], str]) -> tuple[list[Unit], list[tuple[str, str]]]:
+    """Extract only visible cell text while keeping tags and attributes exact."""
+    units: list[Unit] = []
+    parts: list[tuple[str, str]] = []
+    cell_depth = 0
+    pos = 0
+
+    def add_text(text: str) -> None:
+        if not cell_depth or not text.strip():
+            parts.append(("literal", text))
+            return
+        prefix = text[:len(text) - len(text.lstrip())]
+        suffix = text[len(text.rstrip()):]
+        body = text.strip()
+        if prefix:
+            parts.append(("literal", prefix))
+        unit = Unit(uid(), "html_cell", body)
+        units.append(unit)
+        parts.append(("unit", unit.uid))
+        if suffix:
+            parts.append(("literal", suffix))
+
+    for match in HTML_TOKEN_RE.finditer(raw):
+        add_text(raw[pos:match.start()])
+        tag = match.group()
+        parts.append(("literal", tag))
+        cell = HTML_CELL_RE.match(tag)
+        if cell:
+            cell_depth = max(0, cell_depth + (-1 if cell.group(1) else 1))
+        pos = match.end()
+    add_text(raw[pos:])
+    return units, parts
 
 
 def _expand(text: str) -> str:

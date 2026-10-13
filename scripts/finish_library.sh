@@ -16,12 +16,10 @@ until ./hy setup --endpoint https://huggingface.co; do
   sleep 60
 done
 
-printf 'translating sample\n' > "$status"
-./hy run mlx-primer.md --strict || { printf 'failed: sample\n' > "$status"; exit 1; }
-printf 'translating report\n' > "$status"
+printf 'translating report tables\n' > "$status"
 ./hy run '浑水做空辉山乳业报告.md' --strict || { printf 'failed: report\n' > "$status"; exit 1; }
 printf 'translating book\n' > "$status"
-./hy run "Financial Statement Analysis_ A Practitioner's Guide.pdf.md" --strict || {
+./hy run "Financial Statement Analysis_ A Practitioner's Guide.md" --strict || {
   printf 'failed: book\n' > "$status"; exit 1;
 }
 

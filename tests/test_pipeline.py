@@ -25,6 +25,7 @@ from hymt.config import load_config  # noqa: E402
 from hymt.mdparse import parse_markdown, render_blocks  # noqa: E402
 from hymt.pipeline import run, translate_one  # noqa: E402
 from hymt.protect import mask  # noqa: E402
+from scripts.prepare_book import prepare  # noqa: E402
 from hymt.site import build_library  # noqa: E402
 from hymt.translate import SEG_RE, _join_zh, _split_segments, _split_sentences  # noqa: E402
 from hymt.validate import ERROR, Report, validate  # noqa: E402
@@ -183,8 +184,30 @@ class TestConvertedHtml(unittest.TestCase):
         )
         blocks = parse_markdown(src)
         kinds = [b.kind for b in blocks]
-        self.assertEqual(kinds, ["html", "paragraph", "heading", "paragraph"])
+        self.assertEqual(kinds, ["html_table", "paragraph", "heading", "paragraph"])
         self.assertEqual(blocks[0].raw, "<table><tr><td>Revenue</td><td>12.4</td></tr></table>")
+
+    def test_html_table_translates_cells_without_changing_markup_or_numbers(self):
+        src = '<table class="x"><tr><th>Revenue</th><td>12.4</td><td>Net <b>profit</b></td></tr></table>'
+        block = parse_markdown(src)[0]
+        self.assertEqual(block.kind, "html_table")
+        self.assertEqual([u.text for u in block.units], ["Revenue", "12.4", "Net", "profit"])
+        original = {u.uid: u.text for u in block.units}
+        self.assertEqual(block.render_target(original.__getitem__), src)
+        translated = {u.uid: {"Revenue": "收入", "Net": "净", "profit": "利润"}.get(u.text, u.text)
+                      for u in block.units}
+        self.assertEqual(block.render_target(translated.__getitem__),
+                         '<table class="x"><tr><th>收入</th><td>12.4</td><td>净 <b>利润</b></td></tr></table>')
+
+    def test_preparation_breaks_long_prose_and_keeps_tables_exact(self):
+        prose = "This is a sufficiently long sentence about revenue. " * 8
+        table = "<table><tr><td>Revenue</td><td>12.4</td></tr></table>"
+        source = f"# Report\n{prose}\n{table}\n"
+        prepared, changed = prepare(source, target_chars=70)
+        self.assertEqual(changed, 1)
+        self.assertIn(table, prepared)
+        self.assertGreater(prepared.count("\n\n"), source.count("\n\n"))
+        self.assertEqual(_flat(prepared), _flat(source))
 
     def test_tags_that_never_close_do_not_hold_the_block_open(self):
         """`<t>` as an empty-cell placeholder, `<tbody>` with no end tag."""
@@ -194,7 +217,7 @@ class TestConvertedHtml(unittest.TestCase):
             "Profit is less self-evident than it looks.\n"
         )
         blocks = parse_markdown(src)
-        self.assertEqual([b.kind for b in blocks], ["html", "heading", "paragraph"])
+        self.assertEqual([b.kind for b in blocks], ["html_table", "heading", "paragraph"])
 
     def test_nested_same_name_elements_are_matched(self):
         src = (

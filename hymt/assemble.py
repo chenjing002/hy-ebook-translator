@@ -4,9 +4,9 @@ The output interleaves the two languages block by block: the Chinese
 translation first, then the original English. Three rules keep the result
 readable rather than merely complete:
 
-* Blocks with no prose — code fences, display math, HTML, rules, link
-  definitions — are emitted once, verbatim. Duplicating a code listing would
-  add noise, not fidelity.
+* Blocks with no prose — code fences, display math, non-table HTML, rules, link
+  definitions — are emitted once, verbatim. HTML table cells are translated
+  while their tags and attributes stay in place.
 * The English side of a prose block is reproduced from the *original source
   text*, not re-generated, so soft wraps, emphasis and spacing survive exactly.
 * Each original-language block is preceded by an invisible ``<!--en-->``

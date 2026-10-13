@@ -67,9 +67,10 @@ The `<!--en-->` comments are invisible in every Markdown renderer, including
 GitHub's. The reading site uses them to style the original more quietly and to
 offer a 双语 / 中文 / EN toggle.
 
-Blocks with no prose — fenced code, display math, raw HTML, horizontal rules,
-link definitions — are emitted **once**, byte for byte. Duplicating a code
-listing would add noise rather than fidelity.
+Blocks with no prose — fenced code, display math, non-table raw HTML, horizontal
+rules, link definitions — are emitted **once**, byte for byte. HTML tables are
+translated cell by cell and shown in both languages; their tags, attributes,
+and numeric cells stay in place.
 
 ## How structure is preserved
 
@@ -94,7 +95,10 @@ element that opened it is closed, matching by tag name so that the stray
 openers these converters emit — `<t>` standing in for an empty cell, a
 `<tbody>` with no end tag — cannot hold the block open. On a 937 KB book
 converted from PDF that is the difference between 50 headings recognised and
-all 226.
+all 226. For files with long converter paragraphs, run
+`python3 scripts/prepare_book.py inputs/your-book.md`. It adds breaks at
+sentence boundaries and separates line-oriented index entries, while keeping
+all non-whitespace source content and saving a copy under `.state/`.
 
 **Inline level.** Within a prose segment, `hymt/protect.py` replaces everything
 the model must not touch with a numbered sentinel: inline code, inline math,
