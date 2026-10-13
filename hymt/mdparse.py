@@ -42,7 +42,9 @@ VOID_TAGS = {
     "param", "source", "track", "wbr",
 }
 HTML_TAG_RE = re.compile(r"<(?P<close>/?)(?P<name>[A-Za-z][A-Za-z0-9-]*)(?P<attrs>[^<>]*)>")
-HTML_TOKEN_RE = re.compile(r"<!--.*?-->|<(?:\"[^\"]*\"|'[^']*'|[^'\">])*>", re.DOTALL)
+HTML_TOKEN_RE = re.compile(
+    r"<!--.*?-->|</?[A-Za-z](?:\"[^\"]*\"|'[^']*'|[^'\">])*>|<![^>]*>", re.DOTALL
+)
 HTML_CELL_RE = re.compile(r"<\s*(/?)\s*(td|th|caption)\b", re.IGNORECASE)
 
 MATH_ENVS = {

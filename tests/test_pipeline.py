@@ -199,6 +199,13 @@ class TestConvertedHtml(unittest.TestCase):
         self.assertEqual(block.render_target(translated.__getitem__),
                          '<table class="x"><tr><th>收入</th><td>12.4</td><td>净 <b>利润</b></td></tr></table>')
 
+    def test_html_table_keeps_comparison_signs_inside_cells(self):
+        src = '<table><tr><td>Revenue < 10</td><td title="a>b">Cost &amp; tax</td></tr></table>'
+        block = parse_markdown(src)[0]
+        self.assertEqual([u.text for u in block.units], ['Revenue < 10', 'Cost &amp; tax'])
+        original = {u.uid: u.text for u in block.units}
+        self.assertEqual(block.render_target(original.__getitem__), src)
+
     def test_preparation_breaks_long_prose_and_keeps_tables_exact(self):
         prose = "This is a sufficiently long sentence about revenue. " * 8
         table = "<table><tr><td>Revenue</td><td>12.4</td></tr></table>"
