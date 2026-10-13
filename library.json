@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-12T15:05:31",
+  "generated": "2026-10-12T17:53:23",
   "title": "双语书架",
   "subtitle": "Bilingual Library · 本地 Hy-MT2 翻译",
   "model": "mlx-community/Hy-MT2-7B-8bit",
@@ -9,27 +9,14 @@
       "file": "浑水做空辉山乳业报告.md",
       "title": "China Huishan Dairy (6863 HK): A Near Zero",
       "title_zh": "中国辉山乳业（6863 HK）：价值接近零",
-      "excerpt": "我们看空中国辉山乳业控股（6863 HK/“辉山”），因为我们认为其价值接近零。我们认定辉山存在欺诈行为。在这份关于辉山的初步报告中，我们将详细阐述相关结论及支撑证据。",
-      "cjk_chars": 23004,
-      "words": 22801,
+      "excerpt": "<table border=1 style='margin: auto; word-wrap: break-word;'><tr><td style='text-align: center; word-wrap: break-word;'>…",
+      "cjk_chars": 26076,
+      "words": 30865,
       "sections": 21,
-      "minutes": 161,
-      "bytes": 245879,
+      "minutes": 205,
+      "bytes": 325207,
       "updated": "2026-10-12",
-      "updated_ts": 1791842731
-    },
-    {
-      "file": "mlx-primer.md",
-      "title": "A Short Primer on Apple MLX",
-      "title_zh": "Apple MLX 简介",
-      "excerpt": "MLX 是一种用于 Apple 芯片上机器学习的数组框架。它借鉴了 NumPy 的使用体验以及 PyTorch 的可组合性，但其设计基于一个核心架构特点：在 Apple 系统中，CPU 和 GPU 共享同一块内存。",
-      "cjk_chars": 645,
-      "words": 468,
-      "sections": 4,
-      "minutes": 4,
-      "bytes": 5612,
-      "updated": "2026-10-12",
-      "updated_ts": 1791830264
+      "updated_ts": 1791852803
     }
   ]
 }
