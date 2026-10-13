@@ -213,6 +213,17 @@ class TestConvertedHtml(unittest.TestCase):
         original = {u.uid: u.text for u in block.units}
         self.assertEqual(block.render_target(original.__getitem__), src)
 
+    def test_validator_rejects_english_only_html_table(self):
+        with tempfile.TemporaryDirectory(prefix="hy-table-check-") as tmp:
+            root = Path(tmp)
+            source = root / "source.md"
+            output = root / "output.md"
+            table = "<table><tr><td>Revenue</td></tr></table>"
+            source.write_text("# Earnings\n\n" + table)
+            output.write_text("# 收益\n\n<!--en-->\n*Earnings*\n\n" + table)
+            report = validate(source, output, load_config())
+            self.assertIn("untranslated-html-table", [issue.code for issue in report.errors])
+
     def test_preparation_breaks_long_prose_and_keeps_tables_exact(self):
         prose = "This is a sufficiently long sentence about revenue. " * 8
         table = "<table><tr><td>Revenue</td><td>12.4</td></tr></table>"

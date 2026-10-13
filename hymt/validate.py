@@ -108,6 +108,19 @@ def validate(source: Path, output: Path, cfg: Config,
     if out_h < src_h:
         report.add(ERROR, "heading-loss", f"{src_h} headings in source, {out_h} in output")
 
+    # HTML tables must have a translated copy before their marked original.
+    # A document can contain plenty of Chinese prose while leaving every table
+    # untouched, so the document-wide CJK check below cannot catch this.
+    for block in src_blocks:
+        if block.kind != "html_table" or not any(u.translatable() for u in block.units):
+            continue
+        marker = f"<!--en-->\n{block.raw.strip()}"
+        at = out_text.find(marker)
+        target = out_text[:at].rstrip().rsplit("\n\n", 1)[-1] if at >= 0 else ""
+        if at < 0 or "<table" not in target.lower() or not CJK_RE.search(target):
+            report.add(ERROR, "untranslated-html-table",
+                       f"HTML table has no Chinese counterpart: {block.raw[:70]!r}")
+
     # 6. The translation itself has to be present.
     prose_blocks = [b for b in src_blocks if b.kind not in PASSTHROUGH_KINDS
                     and any(u.translatable() for u in b.iter_units())]
