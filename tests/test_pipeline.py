@@ -27,7 +27,7 @@ from hymt.pipeline import run, translate_one  # noqa: E402
 from hymt.protect import mask  # noqa: E402
 from scripts.prepare_book import prepare  # noqa: E402
 from hymt.site import build_library  # noqa: E402
-from hymt.translate import SEG_RE, _join_zh, _split_segments, _split_sentences  # noqa: E402
+from hymt.translate import SEG_RE, Translator, _join_zh, _split_segments, _split_sentences  # noqa: E402
 from hymt.validate import ERROR, Report, validate  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -345,6 +345,16 @@ class TestSegmentSplitting(unittest.TestCase):
     def test_cjk_join_has_no_stray_spaces(self):
         self.assertEqual(_join_zh(["你好", "世界"]), "你好世界")
         self.assertEqual(_join_zh(["你好", "MLX"]), "你好 MLX")
+
+    def test_context_uses_preceding_unit_not_cached_future_text(self):
+        cfg = load_config()
+        translator = Translator(cfg, FakeEngine(cfg), quiet=True)
+        translator._ordered_uids = ["first", "current", "future"]
+        translator._uid_position = {uid: i for i, uid in enumerate(translator._ordered_uids)}
+        background = translator._background(
+            {"first": "前文术语", "future": "后文不应出现"}, "current"
+        )
+        self.assertEqual(background, "前文术语")
 
 
 # ── document level ───────────────────────────────────────────────────────────

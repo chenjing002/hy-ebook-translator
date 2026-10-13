@@ -68,6 +68,8 @@ class Translator:
         self.cfg = cfg
         self.engine = engine
         self.quiet = quiet
+        self._ordered_uids: list[str] = []
+        self._uid_position: dict[str, int] = {}
 
     # -- public API ----------------------------------------------------------
     def translate_document(self, src: Path) -> DocResult:
@@ -75,6 +77,8 @@ class Translator:
         text = src.read_text(encoding="utf-8")
         blocks = parse_markdown(text)
         units = [u for b in blocks for u in b.iter_units()]
+        self._ordered_uids = [u.uid for u in units]
+        self._uid_position = {uid: i for i, uid in enumerate(self._ordered_uids)}
         slug = slugify(src.stem)
         state = DocState.load(self.cfg.state_dir, slug, file_sha(src), self.cfg.fingerprint())
 
@@ -188,7 +192,7 @@ class Translator:
         budget = sum(j.tokens for j in batch)
         for _attempt in range(self.cfg.translate.max_retries + 1):
             prompt = self.engine.build_prompt(
-                body, delimiters=True, background=self._background(zh)
+                body, delimiters=True, background=self._background(zh, batch[0].unit.uid)
             )
             raw = self.engine.generate(prompt, max_new_tokens=int(budget * 2.4) + 128)
             parts = _split_segments(raw, len(batch))
@@ -213,7 +217,8 @@ class Translator:
         has_placeholders = bool(job.masked.spans)
         for _attempt in range(self.cfg.translate.max_retries + 1):
             prompt = self.engine.build_prompt(
-                job.masked.text, delimiters=has_placeholders, background=self._background(zh)
+                job.masked.text, delimiters=has_placeholders,
+                background=self._background(zh, job.unit.uid)
             )
             raw = _strip_stray_markers(
                 self.engine.generate(prompt, max_new_tokens=int(job.tokens * 2.4) + 128)
@@ -252,15 +257,20 @@ class Translator:
                 job.warning = sub.warning
         job.zh = _join_zh(out)
 
-    def _background(self, zh: dict[str, str]) -> str:
+    def _background(self, zh: dict[str, str], uid: str) -> str:
         """Recent Chinese output, handed back as terminology context."""
         n = self.cfg.translate.context_units
         if n <= 0:
             return ""
-        done = [v for v in zh.values() if v and CJK_RE.search(v)]
-        if not done:
-            return ""
-        return " ".join(done[-n:]).strip()[-400:]
+        before = self._uid_position.get(uid, len(self._ordered_uids))
+        done: list[str] = []
+        for earlier in reversed(self._ordered_uids[:before]):
+            value = zh.get(earlier, "")
+            if value and CJK_RE.search(value):
+                done.append(value)
+                if len(done) >= n:
+                    break
+        return " ".join(reversed(done)).strip()[-400:]
 
 
 # --- helpers ----------------------------------------------------------------
