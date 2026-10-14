@@ -1,6 +1,6 @@
 """Document translation orchestration.
 
-Segments are packed into batches under a token budget and sent to Hy-MT2 in one
+Segments are packed into batches under a token budget and sent to a translation API in one
 request, each prefixed with a 【n】 marker. Batching is what makes a book
 tractable, but it can fail — a model may merge or drop a marker — so every
 response is verified and there is a strict fallback ladder:
@@ -15,14 +15,15 @@ from __future__ import annotations
 
 import re
 import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import Config
-from .engine import Engine
+from .api_engine import APIEngine
 from .mdparse import Block, Unit, document_title, parse_markdown
 from .progress import Progress
-from .protect import RESTORE_RE, Masked, mask
+from .protect import RESTORE_RE, Masked, has_orphan_placeholder, mask
 from .state import DocState, file_sha, segment_key, slugify
 
 SEG_OPEN, SEG_CLOSE = "【", "】"
@@ -64,7 +65,7 @@ class DocResult:
 
 
 class Translator:
-    def __init__(self, cfg: Config, engine: Engine, quiet: bool = False) -> None:
+    def __init__(self, cfg: Config, engine: APIEngine, quiet: bool = False) -> None:
         self.cfg = cfg
         self.engine = engine
         self.quiet = quiet
@@ -105,7 +106,9 @@ class Translator:
                 continue
             pending.append(Job(unit=unit, masked=masked))
 
-        warnings: list[dict] = []
+        pending_sources = {job.unit.text[:160] for job in pending}
+        warnings: list[dict] = [w for w in state.warnings
+                                if w.get("source") not in pending_sources]
         translated = 0
         if pending:
             self.engine.load(verbose=not self.quiet)
@@ -113,8 +116,8 @@ class Translator:
                 job.tokens = self.engine.count_tokens(job.masked.text) + 4
             batches = self._pack(pending)
             bar = Progress(len(pending), f"  {src.name[:28]:<28}", enabled=not self.quiet)
-            for batch in batches:
-                self._run_batch(batch, zh)
+            def commit(batch: list[Job]) -> None:
+                nonlocal translated
                 for job in batch:
                     zh[job.unit.uid] = job.zh
                     state.put(job.unit.kind, job.unit.text, job.zh)
@@ -126,7 +129,38 @@ class Translator:
                     translated += 1
                 bar.advance(len(batch))
                 state.warnings = warnings
-                state.save()  # checkpoint: Ctrl-C here loses nothing
+                state.save()  # checkpoint after every translated batch
+
+            workers = self.cfg.translate.workers if self.cfg.translate.context_units == 0 else 1
+            if workers <= 1:
+                for batch in batches:
+                    self._run_batch(batch, zh)
+                    commit(batch)
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    iterator = iter(batches)
+                    active = {}
+                    for _ in range(workers):
+                        batch = next(iterator, None)
+                        if batch is not None:
+                            active[pool.submit(self._run_batch, batch, zh)] = batch
+                    failure: BaseException | None = None
+                    while active:
+                        done, _ = wait(active, return_when=FIRST_COMPLETED)
+                        for future in done:
+                            batch = active.pop(future)
+                            try:
+                                future.result()
+                            except BaseException as exc:
+                                failure = failure or exc
+                            else:
+                                commit(batch)
+                            if failure is None:
+                                following = next(iterator, None)
+                                if following is not None:
+                                    active[pool.submit(self._run_batch, following, zh)] = following
+                    if failure is not None:
+                        raise failure
             bar.close()
 
         state.prune(live_keys)
@@ -201,7 +235,7 @@ class Translator:
             staged: list[str] = []
             for job, part in zip(batch, parts):
                 restored, missing = job.masked.restore(part)
-                if missing or not part.strip():
+                if missing or not part.strip() or has_orphan_placeholder(restored):
                     staged = []
                     break
                 staged.append(restored)
@@ -224,7 +258,7 @@ class Translator:
                 self.engine.generate(prompt, max_new_tokens=int(job.tokens * 2.4) + 128)
             )
             restored, missing = job.masked.restore(raw)
-            if raw.strip() and not missing:
+            if raw.strip() and not missing and not has_orphan_placeholder(restored):
                 job.zh = restored
                 return
         # Last resort: let the model see the real code and links, not sentinels.
@@ -232,7 +266,7 @@ class Translator:
         raw = _strip_stray_markers(
             self.engine.generate(prompt, max_new_tokens=int(job.tokens * 2.4) + 128)
         )
-        if raw.strip():
+        if raw.strip() and not has_orphan_placeholder(raw):
             job.zh = raw
             job.warning = "translated without placeholder protection"
             return
@@ -241,14 +275,30 @@ class Translator:
 
     def _translate_long(self, job: Job, zh: dict[str, str]) -> None:
         """Split an over-long segment on sentence boundaries, then rejoin."""
-        pieces = _split_sentences(job.masked.text)
-        if len(pieces) == 1:
-            pieces = _hard_split(job.masked.text, self.cfg.translate.max_unit_tokens * 3)
+        sentences = _split_sentences(job.masked.text)
+        pieces: list[str] = []
+        current = ""
+        limit = self.cfg.translate.max_unit_tokens
+        for sentence in sentences:
+            if self.engine.count_tokens(sentence) > limit:
+                if current:
+                    pieces.append(current)
+                    current = ""
+                pieces.extend(_hard_split(sentence, limit * 3))
+            elif current and self.engine.count_tokens(current + " " + sentence) > limit:
+                pieces.append(current)
+                current = sentence
+            else:
+                current = f"{current} {sentence}".strip()
+        if current:
+            pieces.append(current)
         out: list[str] = []
         for piece in pieces:
+            scoped = _scoped_mask(piece, job.masked.spans)
+            source_piece, _ = scoped.restore(piece)
             sub = Job(
-                unit=Unit(job.unit.uid, job.unit.kind, piece),
-                masked=_scoped_mask(piece, job.masked.spans),
+                unit=Unit(job.unit.uid, job.unit.kind, source_piece),
+                masked=scoped,
                 tokens=self.engine.count_tokens(piece) + 4,
             )
             self._translate_one(sub, zh)

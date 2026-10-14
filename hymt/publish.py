@@ -1,8 +1,8 @@
 """Git publishing to GitHub Pages.
 
 The repository doubles as the website: Pages is served from the repository root,
-`outputs/*.md` are the documents, and `index.html` / `reader.html` render them.
-That keeps exactly one copy of every translation.
+the bilingual Markdown in [paths].outputs are the documents, and `index.html` /
+`reader.html` render them. That keeps exactly one copy of every translation.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from .config import Config
 # when [publish].include_inputs is on.
 TRACKED = [
     "index.html", "reader.html", "library.json", ".nojekyll", ".gitignore",
-    "README.md", "config.toml", "pyproject.toml", "requirements.txt", "hy",
-    "assets", "hymt", "outputs", "scripts", "tests",
+    "README.md", "config.toml", "config.hy-mt2.toml", "pyproject.toml",
+    "requirements.txt", "assets", "docs", "hymt", "scripts", "tests",
 ]
 
 
@@ -87,12 +87,15 @@ def pending_changes(cfg: Config) -> list[str]:
 
 
 def stage(cfg: Config) -> list[str]:
-    paths = list(TRACKED)
+    # The documents come from wherever [paths].outputs points.
+    paths = [*TRACKED, cfg.output_dir]
     if cfg.publish.include_inputs:
         paths.append("inputs")
     for rel in paths:
-        if (cfg.root / rel).exists():
-            git(cfg, "add", "--", rel, check=False)
+        # `-A` so a document or module deleted locally also leaves the site. A
+        # path that is neither present nor tracked is simply skipped.
+        if (cfg.root / rel).exists() or git(cfg, "ls-files", "--", rel, check=False):
+            git(cfg, "add", "-A", "--", rel, check=False)
     staged = git(cfg, "diff", "--cached", "--name-only", check=False)
     return [p for p in staged.split("\n") if p.strip()]
 
@@ -106,9 +109,10 @@ def commit_message(cfg: Config, docs: list[str]) -> str:
         subject = f"Add bilingual translations ({len(docs)} documents)"
     body = [
         "",
-        f"Translated locally with {cfg.model.repo} via Apple MLX.",
         f"Direction: {cfg.translate.source_lang} → {cfg.translate.target_lang}.",
     ]
+    if cfg.api.model:
+        body.insert(1, f"Translation API model: {cfg.api.model}.")
     if docs:
         body.append("")
         body.extend(f"- {name}" for name in sorted(docs)[:40])
@@ -153,7 +157,7 @@ def publish(cfg: Config, docs: list[str], push: bool = True,
     except RuntimeError as exc:
         result.messages.append(str(exc))
         result.messages.append(
-            "commit is saved locally — fix access and run `./hy publish` again"
+            "commit is saved locally — fix access and run `hy publish` again"
         )
         return result
 

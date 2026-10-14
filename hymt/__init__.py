@@ -1,3 +1,3 @@
-"""Local Markdown translation and publishing pipeline (Hy-MT2 + Apple MLX)."""
+"""Markdown preprocessing, translation and bilingual publishing pipeline."""
 
 __version__ = "1.0.0"

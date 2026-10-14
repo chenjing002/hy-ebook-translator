@@ -7,7 +7,7 @@ author: Pipeline
 
 A paragraph with `inline_code()`, inline math $E = mc^2$, a [link](https://example.com/a_b),
 an ![image](imgs/figure-1.png "Figure 1"), a reference [link][spec], a footnote[^note],
-**bold**, *italic*, an autolink <https://mlx.dev>, an entity &mdash; and a raw <kbd>Tab</kbd> tag.
+**bold**, *italic*, an autolink <https://example.com>, an entity &mdash; and a raw <kbd>Tab</kbd> tag.
 
 ## Scaled Dot-Product Attention
 
@@ -62,7 +62,7 @@ And a loose list with nested content:
 Setext Heading Style
 --------------------
 
-Some closing prose that mentions MLX, Apple Silicon, and the number 42. It also
+Some closing prose that mentions Python, the open web, and the number 42. It also
 has a price of $5 and $6, which must not be read as mathematics.
 
 ```

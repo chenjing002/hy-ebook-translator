@@ -313,6 +313,8 @@ class _Parser:
             limit = self.i
             while limit < len(self.lines) and self.lines[limit].strip():
                 limit += 1
+            if line.lstrip().lower().startswith("<table"):
+                limit = _table_close_limit(self.lines, self.i, limit)
             self.i = _html_end(self.lines, self.i, limit)
         raw = "\n".join(self.lines[start:self.i])
         if line.lstrip().lower().startswith("<table"):
@@ -598,6 +600,27 @@ def _html_end(lines: list[str], start: int, limit: int) -> int:
         if depth <= 0:
             return j + 1
     return limit
+
+
+def _table_close_limit(lines: list[str], start: int, blank_limit: int) -> int:
+    """Keep a table together when a converter inserts blank lines inside cells.
+
+    Only extend the block when a balanced closing tag is nearby. Otherwise
+    retain the ordinary blank-line boundary, so a malformed table cannot eat
+    the rest of a document.
+    """
+    opening = re.compile(r"<table\b[^<>]*>", re.IGNORECASE)
+    closing = re.compile(r"</table\s*>", re.IGNORECASE)
+    depth = 0
+    size = 0
+    for j in range(start, min(len(lines), start + 100)):
+        size += len(lines[j])
+        if size > 100_000:
+            break
+        depth += len(opening.findall(lines[j])) - len(closing.findall(lines[j]))
+        if depth <= 0:
+            return j + 1
+    return blank_limit
 
 
 def _html_table_units(raw: str, uid: Callable[[], str]) -> tuple[list[Unit], list[tuple[str, str]]]:

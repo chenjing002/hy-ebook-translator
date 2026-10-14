@@ -51,7 +51,7 @@ class DocState:
             data = json.loads(path.read_text())
         except (json.JSONDecodeError, OSError):
             return st
-        # A changed model or translation setting invalidates cached text; a
+        # A changed API or translation setting invalidates cached text; a
         # changed source does not, because keys are content-addressed.
         if data.get("fingerprint") != fingerprint:
             return st

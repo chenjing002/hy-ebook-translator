@@ -1,22 +1,88 @@
 {
-  "generated": "2026-10-12T17:53:23",
+  "generated": "2026-10-14T04:44:41",
+  "dir": "output",
   "title": "双语书架",
-  "subtitle": "Bilingual Library · 本地 Hy-MT2 翻译",
-  "model": "mlx-community/Hy-MT2-7B-8bit",
+  "subtitle": "Bilingual Library",
+  "api_model": null,
   "direction": "English → Simplified Chinese",
   "documents": [
     {
+      "file": "Security Analysis seventh Edition.md",
+      "title": "Security Analysis, Seventh Edition",
+      "title_zh": "证券分析（第七版）",
+      "excerpt": "前言",
+      "cjk_chars": 528542,
+      "words": 440598,
+      "sections": 484,
+      "minutes": 3324,
+      "bytes": 4655502,
+      "updated": "2026-10-14",
+      "updated_ts": 1791977431
+    },
+    {
       "file": "浑水做空辉山乳业报告.md",
       "title": "China Huishan Dairy (6863 HK): A Near Zero",
-      "title_zh": "中国辉山乳业（6863 HK）：价值接近零",
+      "title_zh": "中国辉山乳业（6863 HK）：几近归零",
       "excerpt": "<table border=1 style='margin: auto; word-wrap: break-word;'><tr><td style='text-align: center; word-wrap: break-word;'>…",
-      "cjk_chars": 26076,
-      "words": 30865,
+      "cjk_chars": 25214,
+      "words": 31017,
       "sections": 21,
-      "minutes": 205,
-      "bytes": 325207,
-      "updated": "2026-10-12",
-      "updated_ts": 1791852803
+      "minutes": 204,
+      "bytes": 324373,
+      "updated": "2026-10-14",
+      "updated_ts": 1791977360
+    },
+    {
+      "file": "Special Situation Investing Classes CBS Joel Greenblatees.md",
+      "title": "Special Situation Investing Classes",
+      "title_zh": "特殊情况投资课程（哥大商学院·乔尔·格林布拉特）",
+      "excerpt": "哥伦比亚大学商学院的特殊情况投资课程：这些课堂笔记和补充材料由一位曾在2002年至2006年间旁听乔尔·格林布拉特在哥伦比亚大学商学院开设的特殊情况投资课程的投资者撰写。不同年份的笔记中可能会有重复的内容或概念，但这种重复和补充材料有助于加…",
+      "cjk_chars": 252941,
+      "words": 184416,
+      "sections": 372,
+      "minutes": 1471,
+      "bytes": 1981179,
+      "updated": "2026-10-14",
+      "updated_ts": 1791977356
+    },
+    {
+      "file": "How to lie with statistics.md",
+      "title": "How to Lie with Statistics",
+      "title_zh": "如何用统计数据撒谎",
+      "excerpt": "《用统计数据说谎》作者：达雷尔·赫夫，插图：欧文·盖斯",
+      "cjk_chars": 39641,
+      "words": 35639,
+      "sections": 35,
+      "minutes": 261,
+      "bytes": 358250,
+      "updated": "2026-10-14",
+      "updated_ts": 1791977344
+    },
+    {
+      "file": "Show Me the Money Writing Business.pdf.md",
+      "title": "Show Me the Money: Writing Business and Economics Stories",
+      "title_zh": "给我看钱：商业财经写作",
+      "excerpt": "第二版",
+      "cjk_chars": 333170,
+      "words": 225920,
+      "sections": 406,
+      "minutes": 1860,
+      "bytes": 2566561,
+      "updated": "2026-10-14",
+      "updated_ts": 1791972122
+    },
+    {
+      "file": "Financial Statement Analysis_ A Practitioner's Guide.md",
+      "title": "Financial Statement Analysis: A Practitioner's Guide",
+      "title_zh": "财务报表分析：从业者指南",
+      "excerpt": "Wiley金融系列第四版",
+      "cjk_chars": 200500,
+      "words": 166996,
+      "sections": 225,
+      "minutes": 1260,
+      "bytes": 1804678,
+      "updated": "2026-10-14",
+      "updated_ts": 1791969755
     }
   ]
 }

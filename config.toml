@@ -1,48 +1,31 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# hy-ebook-translator — local Markdown translation & publishing pipeline
-# Everything runs on-device via Apple MLX. No cloud translation APIs.
-# Override any value by copying this file to config.local.toml.
-# ─────────────────────────────────────────────────────────────────────────────
+# Markdown translation and publishing defaults.
+# Put endpoint settings in config.local.toml and the API key in an environment
+# variable. No translation API is selected by default.
 
-[model]
-# MLX weights for Tencent Hunyuan's Hy-MT2 translation model.
-#   mlx-community/Hy-MT2-7B        bf16, ~15 GB  (needs >=32 GB unified memory)
-#   mlx-community/Hy-MT2-7B-8bit   ~8 GB         (recommended on 16 GB Macs)
-#   mlx-community/Hy-MT2-7B-4bit   ~4.5 GB       (fastest, slight quality loss)
-repo = "mlx-community/Hy-MT2-7B-8bit"
-# Upstream-recommended sampling parameters for the 1.8B / 7B dense models.
-temperature = 0.7
-top_p = 0.6
-top_k = 20
-# From the model's own generation_config.json; keeps long documents from
-# falling into repetition loops.
-repetition_penalty = 1.05
-# Hard ceiling on generated tokens per request.
-max_new_tokens = 3072
+[paths]
+inputs = "inputs"
+outputs = "output"
+
+[api]
+url = ""
+model = ""
+key_env = "TRANSLATION_API_KEY"
+timeout_seconds = 120
+temperature = 0.0
+max_output_tokens = 3072
 
 [translate]
 source_lang = "English"
 target_lang = "Simplified Chinese"
-# Hy-MT2 ships both a Chinese and an English instruction template. The Chinese
-# one is recommended whenever the target language is Chinese.
-prompt_lang = "zh"
-# Segments are packed into one generation request up to this token budget.
 batch_token_budget = 640
 max_batch_units = 10
-# Single segments longer than this are split on sentence boundaries.
 max_unit_tokens = 480
-# Number of preceding segments supplied as background context (0 disables).
 context_units = 1
-# Retries when the model drops a protected placeholder or a segment marker.
 max_retries = 2
 
 [layout]
-# "zh-first" puts the Chinese translation above the English original.
 order = "zh-first"
-# How an English heading is carried over: "italic-below" | "inline" | "none"
 heading_style = "italic-below"
-# Emit invisible <!--en--> HTML comments so the reading site can style the
-# original-language blocks differently. Harmless in any other renderer.
 markers = true
 
 [publish]
@@ -50,7 +33,16 @@ repo = "chenjing002/hy-ebook-translator"
 branch = "main"
 protocol = "ssh"
 site_title = "双语书架"
-site_subtitle = "Bilingual Library · 本地 Hy-MT2 翻译"
-# Push the English source files too. Off by default: your inputs may be
-# copyrighted material you do not want on a public repository.
+site_subtitle = "Bilingual Library"
 include_inputs = false
+
+# Shelf labels. A converted book often opens with front matter or a title split
+# across lines, so the heading in the file is not always the book's title.
+# Anything not listed here keeps the title taken from the document itself.
+[titles]
+"Security Analysis seventh Edition.md" = { zh = "证券分析（第七版）", en = "Security Analysis, Seventh Edition" }
+"How to lie with statistics.md" = { zh = "如何用统计数据撒谎", en = "How to Lie with Statistics" }
+"Financial Statement Analysis_ A Practitioner's Guide.md" = { zh = "财务报表分析：从业者指南", en = "Financial Statement Analysis: A Practitioner's Guide" }
+"Special Situation Investing Classes CBS Joel Greenblatees.md" = { zh = "特殊情况投资课程（哥大商学院·乔尔·格林布拉特）", en = "Special Situation Investing Classes" }
+"Show Me the Money Writing Business.pdf.md" = { zh = "给我看钱：商业财经写作", en = "Show Me the Money: Writing Business and Economics Stories" }
+"浑水做空辉山乳业报告.md" = { zh = "中国辉山乳业（6863 HK）：几近归零", en = "China Huishan Dairy (6863 HK): A Near Zero" }

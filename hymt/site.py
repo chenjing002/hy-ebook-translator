@@ -2,8 +2,9 @@
 
 `index.html`, `reader.html` and `assets/` are ordinary checked-in files, so the
 site can be edited by hand. This module only derives `library.json` — the shelf
-manifest — from whatever currently sits in `outputs/`, and drops the
-`.nojekyll` marker GitHub Pages needs to serve an `assets/` directory as-is.
+manifest — from whatever currently sits in the configured output directory, and
+drops the `.nojekyll` marker GitHub Pages needs to serve an `assets/` directory
+as-is. The manifest names that directory so the reader can fetch from it.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ CJK_PER_MIN = 400
 WORDS_PER_MIN = 220
 
 
-def describe(path: Path) -> dict:
+def describe(path: Path, titles: dict[str, str] | None = None) -> dict:
     text = PROVENANCE_RE.sub("", path.read_text(encoding="utf-8"))
     title_zh = ""
     title_en = ""
@@ -34,6 +35,11 @@ def describe(path: Path) -> dict:
     if m:
         title_zh = _plain(m.group(1))
         title_en = _echo_after(text, m.end())
+    # A configured title wins: in a converted book the first heading is often
+    # front matter ("Contents") or one line of a title split across several.
+    if titles:
+        title_zh = titles.get("zh") or title_zh
+        title_en = titles.get("en") or title_en
 
     cjk = len(CJK_RE.findall(text))
     words = len(WORD_RE.findall(text))
@@ -56,13 +62,17 @@ def describe(path: Path) -> dict:
 
 
 def build_library(cfg: Config) -> dict:
-    docs = [describe(p) for p in sorted(cfg.outputs_dir.glob("*.md"))]
+    docs = [
+        describe(p, cfg.titles.get(p.name))
+        for p in sorted(cfg.outputs_dir.glob("*.md"))
+    ]
     docs.sort(key=lambda d: -d["updated_ts"])
     return {
         "generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "dir": cfg.output_dir,
         "title": cfg.publish.site_title,
         "subtitle": cfg.publish.site_subtitle,
-        "model": cfg.model.repo,
+        "api_model": cfg.api.model or None,
         "direction": f"{cfg.translate.source_lang} → {cfg.translate.target_lang}",
         "documents": docs,
     }

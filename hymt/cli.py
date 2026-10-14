@@ -1,25 +1,23 @@
 """Command line interface.
 
-    ./hy setup              download the model weights (resumable)
-    ./hy run                scan → translate → validate → save → publish
-    ./hy translate FILE     one document, no publishing
-    ./hy validate           re-check what is already in outputs/
-    ./hy site               rebuild library.json
-    ./hy publish            commit and push
-    ./hy serve              preview the site locally
-    ./hy status             what is configured and what is done
+    python3 -m hymt run                scan → translate → validate → save → publish
+    python3 -m hymt translate FILE     one document, no publishing
+    python3 -m hymt validate           re-check the documents already generated
+    python3 -m hymt site               rebuild library.json
+    python3 -m hymt publish            commit and push
+    python3 -m hymt serve              preview the site locally
+    python3 -m hymt status             what is configured and what is done
 """
 
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
-from . import __version__, download as dl
+from . import __version__
+from .api_engine import APIEngine
 from .config import load_config
-from .engine import Engine, model_info, preflight, total_memory_gb
 from .pipeline import DocOutcome, run, scan, translate_one
 from .publish import enable_pages, is_repo, pending_changes, publish as git_publish
 from .site import build_library, write_site
@@ -35,21 +33,24 @@ BULLET = "  •"
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="hy",
-        description="Local Markdown translation and publishing pipeline (Hy-MT2 on Apple MLX).",
+        description="Markdown preprocessing, API translation and bilingual publishing pipeline.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__.split("\n", 2)[2],
     )
     p.add_argument("--version", action="version", version=f"hy-ebook-translator {__version__}")
-    p.add_argument("--model", help="override [model].repo")
+    p.add_argument("--config", type=Path, help="additional TOML settings file")
+    p.add_argument("--api-url", help="override [api].url")
+    p.add_argument("--api-model", help="override [api].model")
+    p.add_argument("--fallback-model", action="append", help="model to use when the prior model reaches its cap")
+    p.add_argument("--api-key-env", help="override [api].key_env")
+    p.add_argument("--max-total-tokens", type=int, help="cap this project's recorded API token use")
+    p.add_argument("--input-dir", help="override [paths].inputs, e.g. preprocessed")
+    p.add_argument("--output-dir", help="override [paths].outputs, e.g. output")
     p.add_argument("--target-lang", help="override [translate].target_lang")
     p.add_argument("--source-lang", help="override [translate].source_lang")
     p.add_argument("--order", choices=["zh-first", "en-first"], help="override [layout].order")
     p.add_argument("-q", "--quiet", action="store_true", help="suppress progress output")
     sub = p.add_subparsers(dest="command")
-
-    s = sub.add_parser("setup", help="download model weights and check this machine")
-    s.add_argument("--repo", help="a specific weight repository to fetch")
-    s.add_argument("--endpoint", help="pin a download host, e.g. https://hf-mirror.com")
 
     s = sub.add_parser("run", help="the whole workflow")
     s.add_argument("only", nargs="*", help="limit to these input files")
@@ -82,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("serve", help="serve the site on localhost")
     s.add_argument("-p", "--port", type=int, default=8000)
 
-    sub.add_parser("status", help="configuration, weights and progress")
+    sub.add_parser("status", help="configuration and progress")
 
     s = sub.add_parser("clean", help="discard cached translation state")
     s.add_argument("only", nargs="*")
@@ -90,8 +91,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def config_from(args: argparse.Namespace):
-    return load_config(overrides={
-        "model.repo": args.model,
+    return load_config(extra_path=args.config, overrides={
+        "api.url": args.api_url,
+        "api.model": args.api_model,
+        "api.fallback_models": args.fallback_model,
+        "api.key_env": args.api_key_env,
+        "api.max_total_tokens": args.max_total_tokens,
+        "paths.inputs": args.input_dir,
+        "paths.outputs": args.output_dir,
         "translate.target_lang": args.target_lang,
         "translate.source_lang": args.source_lang,
         "layout.order": args.order,
@@ -106,6 +113,13 @@ def human(n: float) -> str:
     return f"{n:.0f} B"
 
 
+def input_label(cfg) -> Path:
+    try:
+        return cfg.inputs_dir.relative_to(cfg.root)
+    except ValueError:
+        return cfg.inputs_dir
+
+
 def hms(seconds: float) -> str:
     seconds = int(seconds)
     if seconds >= 3600:
@@ -113,11 +127,6 @@ def hms(seconds: float) -> str:
     if seconds >= 60:
         return f"{seconds // 60}m {seconds % 60}s"
     return f"{seconds}s"
-
-
-def warn_preflight(cfg) -> None:
-    for note in preflight(cfg):
-        print(f"!  {note}", file=sys.stderr)
 
 
 def report_outcomes(outcomes: list[DocOutcome], verbose: bool) -> None:
@@ -132,47 +141,12 @@ def report_outcomes(outcomes: list[DocOutcome], verbose: bool) -> None:
 # ── commands ─────────────────────────────────────────────────────────────────
 
 
-def cmd_setup(args, cfg) -> int:
-    import os
-
-    if args.endpoint:
-        os.environ["HF_ENDPOINT"] = args.endpoint.rstrip("/")
-    repo = args.repo or cfg.model.repo
-    print(f"hy-ebook-translator {__version__}")
-    print(f"{BULLET} python  {sys.version.split()[0]}")
-    try:
-        import mlx.core as mx
-        import mlx_lm
-        print(f"{BULLET} mlx-lm  {mlx_lm.__version__}  (Metal: {mx.metal.is_available()})")
-    except Exception as exc:
-        print(f"!  mlx-lm is not importable: {exc}", file=sys.stderr)
-        print("   pip install -r requirements.txt", file=sys.stderr)
-        return 1
-    print(f"{BULLET} memory  {total_memory_gb():.0f} GB unified")
-    warn_preflight(cfg)
-
-    if dl.is_complete(cfg.root, repo):
-        print(f"{BULLET} weights already complete: {dl.local_dir(cfg.root, repo)}")
-        return 0
-    try:
-        remaining = dl.missing_bytes(cfg.root, repo)
-        print(f"{BULLET} {human(remaining)} still to download for {repo}")
-    except Exception:
-        pass
-    try:
-        dl.fetch(cfg.root, repo)
-    except (RuntimeError, KeyboardInterrupt) as exc:
-        print(f"\n!  {exc}", file=sys.stderr)
-        return 1
-    return 0
-
-
 def cmd_scan(args, cfg) -> int:
     files = scan(cfg)
     if not files:
-        print(f"No Markdown in {cfg.inputs_dir.relative_to(cfg.root)}/ — copy some .md files there.")
+        print(f"No Markdown in {input_label(cfg)}/ — copy some .md files there.")
         return 0
-    print(f"{len(files)} input file(s) in {cfg.inputs_dir.relative_to(cfg.root)}/\n")
+    print(f"{len(files)} input file(s) in {input_label(cfg)}/\n")
     fp = cfg.fingerprint()
     for src in files:
         out = cfg.outputs_dir / src.name
@@ -193,25 +167,29 @@ def cmd_translate(args, cfg) -> int:
     if not files:
         print("Nothing to translate.")
         return 0
-    warn_preflight(cfg)
-    engine = Engine(cfg)
+    engine = APIEngine(cfg)
+    engine.load()
     outcomes: list[DocOutcome] = []
     print(f"Translating {len(files)} document(s) → {cfg.translate.target_lang}\n")
     for src in files:
-        outcomes.append(translate_one(cfg, engine, src, force=args.force, quiet=cfg_quiet(args)))
-    report_outcomes(outcomes, args.verbose)
-    write_site(cfg)
+        outcome = translate_one(cfg, engine, src, force=args.force, quiet=cfg_quiet(args))
+        outcomes.append(outcome)
+        report_outcomes([outcome], args.verbose)
+    if cfg.output_dir == "outputs":
+        write_site(cfg)
+    print(f"{engine.calls} API requests · {engine.prompt_tokens:,} input + "
+          f"{engine.output_tokens:,} output tokens this run")
     return 0 if all(o.ok for o in outcomes) else 1
 
 
 def cmd_run(args, cfg) -> int:
     files = scan(cfg, args.only)
     if not files:
-        print(f"Nothing in {cfg.inputs_dir.relative_to(cfg.root)}/ to translate.")
+        print(f"Nothing in {input_label(cfg)}/ to translate.")
         return 0
-    warn_preflight(cfg)
-    engine = Engine(cfg)
-    print(f"Translating {len(files)} document(s) with {cfg.model.repo}")
+    engine = APIEngine(cfg)
+    engine.load()
+    print(f"Translating {len(files)} document(s) with API model {cfg.api.model}")
     print(f"{cfg.translate.source_lang} → {cfg.translate.target_lang}, "
           f"{cfg.layout.order} bilingual layout\n")
 
@@ -227,7 +205,7 @@ def cmd_run(args, cfg) -> int:
     print(f"\n{len(report.outcomes)} document(s) in {hms(report.seconds)} · "
           f"{report.translated} segments translated, {report.cached} reused")
     if engine.loaded:
-        print(f"    {engine.calls} model calls, "
+        print(f"    {engine.calls} API requests, "
               f"{engine.prompt_tokens:,} prompt + {engine.output_tokens:,} output tokens")
 
     pub = report.published
@@ -278,7 +256,7 @@ def cmd_publish(args, cfg) -> int:
     write_site(cfg)
     docs = [p.name for p in sorted(cfg.outputs_dir.glob("*.md"))]
     if not docs:
-        print("outputs/ is empty — nothing to publish.")
+        print(f"{cfg.output_dir}/ is empty — nothing to publish.")
         return 0
     result = git_publish(cfg, docs, push=not args.no_push, dry_run=args.dry_run)
     for message in result.messages:
@@ -318,27 +296,10 @@ def cmd_serve(args, cfg) -> int:
 
 def cmd_status(args, cfg) -> int:
     print(f"hy-ebook-translator {__version__}\n")
-    print(f"  model        {cfg.model.repo}")
-    local = dl.local_dir(cfg.root, cfg.model.repo)
-    if local.exists():
-        have = sum(f.stat().st_size for f in local.iterdir() if f.is_file())
-        parts = local / ".parts"
-        partial = sum(f.stat().st_size for f in parts.rglob("*.part")) if parts.exists() else 0
-        try:
-            missing = dl.missing_bytes(cfg.root, cfg.model.repo)
-        except Exception:
-            missing = 0
-        state = "complete" if missing == 0 else f"{human(missing)} remaining"
-        progress = f", {human(partial)} in resumable ranges" if partial else ""
-        print(f"  weights      {local.relative_to(cfg.root)}  ({human(have)} on disk{progress}, {state})")
-    elif model_info(cfg.model.repo).downloaded:
-        print("  weights      in the HuggingFace cache")
-    else:
-        print("  weights      not downloaded — run ./hy setup")
-    print(f"  direction    {cfg.translate.source_lang} → {cfg.translate.target_lang}"
-          f"  (prompt in {cfg.translate.prompt_lang})")
+    print(f"  api          {cfg.api.url or 'not configured'}")
+    print(f"  api model    {cfg.api.model or 'not configured'}")
+    print(f"  direction    {cfg.translate.source_lang} → {cfg.translate.target_lang}")
     print(f"  layout       {cfg.layout.order}, headings {cfg.layout.heading_style}")
-    print(f"  memory       {total_memory_gb():.0f} GB unified")
     print(f"  inputs       {len(scan(cfg))} file(s)")
     print(f"  outputs      {len(list(cfg.outputs_dir.glob('*.md')))} file(s)")
     print(f"  repository   {cfg.publish.repo} [{cfg.publish.branch}]"
@@ -346,7 +307,6 @@ def cmd_status(args, cfg) -> int:
     if is_repo(cfg):
         changes = pending_changes(cfg)
         print(f"  git          {len(changes)} uncommitted path(s)")
-    warn_preflight(cfg)
     return 0
 
 
@@ -362,10 +322,11 @@ def cmd_clean(args, cfg) -> int:
         print(f"removed {removed} state file(s)")
         return 0
     if cfg.state_dir.exists():
-        count = len(list(cfg.state_dir.glob("*.json")))
-        for path in cfg.state_dir.glob("*.json"):
+        caches = [p for p in cfg.state_dir.glob("*.json") if p.name != "api-usage.json"]
+        count = len(caches)
+        for path in caches:
             path.unlink()
-        print(f"removed {count} state file(s); outputs/ untouched")
+        print(f"removed {count} translation state file(s); API usage and documents untouched")
     return 0
 
 
@@ -374,7 +335,7 @@ def cfg_quiet(args) -> bool:
 
 
 COMMANDS = {
-    "setup": cmd_setup, "run": cmd_run, "translate": cmd_translate, "scan": cmd_scan,
+    "run": cmd_run, "translate": cmd_translate, "scan": cmd_scan,
     "validate": cmd_validate, "site": cmd_site, "publish": cmd_publish,
     "serve": cmd_serve, "status": cmd_status, "clean": cmd_clean,
 }
@@ -391,6 +352,9 @@ def main(argv: list[str] | None = None) -> int:
     cfg.state_dir.mkdir(parents=True, exist_ok=True)
     try:
         return COMMANDS[args.command](args, cfg)
+    except (RuntimeError, ValueError) as exc:
+        print(f"!  {exc}", file=sys.stderr)
+        return 1
     except KeyboardInterrupt:
         print("\ninterrupted — progress is saved; re-run to continue", file=sys.stderr)
         return 130

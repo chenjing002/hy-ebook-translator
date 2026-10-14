@@ -1,6 +1,6 @@
 """Pipeline tests.
 
-These run without model weights: a fake engine stands in for Hy-MT2 and speaks
+These run without an API connection: a fake engine speaks
 the same protocol (segment markers in, segment markers out), which is what lets
 the parser, the placeholder protection, the assembler and the validator be
 tested end to end.
@@ -46,7 +46,7 @@ class FakeTokenizer:
 
 
 class FakeEngine:
-    """Answers like Hy-MT2 would: Chinese text, markers and placeholders kept."""
+    """Returns Chinese text while preserving markers and placeholders."""
 
     def __init__(self, cfg, drop_marker: bool = False, drop_placeholder: bool = False):
         self.cfg = cfg
@@ -187,6 +187,13 @@ class TestConvertedHtml(unittest.TestCase):
         self.assertEqual(kinds, ["html_table", "paragraph", "heading", "paragraph"])
         self.assertEqual(blocks[0].raw, "<table><tr><td>Revenue</td><td>12.4</td></tr></table>")
 
+    def test_blank_lines_inside_table_cell_do_not_split_table(self):
+        src = "<table><tr><td>Legal Person\n\nWang Bing\n\n</td></tr></table>\n\nNext paragraph."
+        blocks = parse_markdown(src)
+        self.assertEqual([b.kind for b in blocks], ["html_table", "paragraph"])
+        self.assertEqual(blocks[0].raw, src.split("\n\nNext paragraph.")[0])
+        self.assertIn("Wang Bing", [u.text for u in blocks[0].units])
+
     def test_html_table_translates_cells_without_changing_markup_or_numbers(self):
         src = '<table class="x"><tr><th>Revenue</th><td>12.4</td><td>Net <b>profit</b></td></tr></table>'
         block = parse_markdown(src)[0]
@@ -223,6 +230,61 @@ class TestConvertedHtml(unittest.TestCase):
             output.write_text("# 收益\n\n<!--en-->\n*Earnings*\n\n" + table)
             report = validate(source, output, load_config())
             self.assertIn("untranslated-html-table", [issue.code for issue in report.errors])
+
+    def test_validator_accepts_translated_table_with_blank_lines_in_cell(self):
+        with tempfile.TemporaryDirectory(prefix="hy-multiline-table-") as tmp:
+            root = Path(tmp)
+            source = root / "source.md"
+            output = root / "output.md"
+            original = "<table><tr><td>Legal Person\n\nWang Bing</td></tr></table>"
+            translated = "<table><tr><td>法人\n\n王冰</td></tr></table>"
+            source.write_text(original)
+            output.write_text(translated + "\n\n<!--en-->\n" + original)
+            report = validate(source, output, load_config())
+            self.assertNotIn("untranslated-html-table", [issue.code for issue in report.errors])
+
+    def test_validator_catches_unclosed_translated_table(self):
+        with tempfile.TemporaryDirectory(prefix="hy-unclosed-table-") as tmp:
+            root = Path(tmp)
+            source = root / "source.md"
+            output = root / "output.md"
+            original = "<table><tr><td>Revenue</td></tr></table>"
+            source.write_text(original)
+            output.write_text("<table><tr><td>收入</td></tr>\n\n<!--en-->\n" + original)
+            report = validate(source, output, load_config())
+            self.assertIn("unbalanced-html-table", [issue.code for issue in report.errors])
+
+    def test_validator_catches_damaged_placeholder(self):
+        with tempfile.TemporaryDirectory(prefix="hy-damaged-placeholder-") as tmp:
+            root = Path(tmp)
+            source = root / "source.md"
+            output = root / "output.md"
+            source.write_text("The `$S$` price")
+            output.write_text("价格 ⟪0⟪\n\n<!--en-->\nThe `$S$` price")
+            report = validate(source, output, load_config())
+            self.assertIn("leaked-placeholder", [issue.code for issue in report.errors])
+
+    def test_validator_allows_ticker_only_html_table(self):
+        with tempfile.TemporaryDirectory(prefix="hy-ticker-check-") as tmp:
+            root = Path(tmp)
+            source = root / "source.md"
+            output = root / "output.md"
+            table = "<table><tr><td>RCII</td><td>TBL</td><td>COLM</td></tr></table>"
+            source.write_text("# Tickers\n\n" + table)
+            output.write_text("# 股票代码\n\n<!--en-->\n*Tickers*\n\n" + table)
+            report = validate(source, output, load_config())
+            self.assertNotIn("untranslated-html-table", [issue.code for issue in report.errors])
+
+    def test_validator_allows_numeric_html_table_with_footnote_markers(self):
+        with tempfile.TemporaryDirectory(prefix="hy-numeric-table-") as tmp:
+            root = Path(tmp)
+            source = root / "source.md"
+            output = root / "output.md"
+            table = "<table><tr><td>1930</td><td>179,875(d)</td></tr></table>"
+            source.write_text("# Values\n\n" + table)
+            output.write_text("# 数值\n\n<!--en-->\n*Values*\n\n" + table)
+            report = validate(source, output, load_config())
+            self.assertNotIn("untranslated-html-table", [issue.code for issue in report.errors])
 
     def test_preparation_breaks_long_prose_and_keeps_tables_exact(self):
         prose = "This is a sufficiently long sentence about revenue. " * 8
@@ -298,7 +360,7 @@ class TestProtection(unittest.TestCase):
         "A paragraph with `code`, $x^2$, a [link](http://x.com) and **bold** text.",
         "See ![diagram](imgs/a.png \"Title\") and [docs][ref] plus a footnote[^1].",
         "Inline math $\\alpha + \\beta$ costs $5 and $6 at <https://x.com> &mdash; done.",
-        "Use `pip install mlx-lm`, then read https://huggingface.co/mlx-community.",
+        "Use `pip install package-name`, then read https://example.com/docs.",
         "The <strong>HTML</strong> tag and \\ref{eq:1} reference.",
     ]
 
@@ -319,13 +381,13 @@ class TestProtection(unittest.TestCase):
         self.assertTrue(mask("Set `x = 2` first.").needs_translation)
 
     def test_degraded_bracket_is_recovered(self):
-        m = mask("Install `mlx-lm` from [here](http://x.com).")
+        m = mask("Install `package-name` from [here](http://x.com).")
         restored, missing = m.restore("从 ⟪0⟫ 安装，见 [这里][1]。")
         self.assertEqual(missing, [])
         self.assertIn("http://x.com", restored)
 
     def test_lost_placeholder_is_reported(self):
-        m = mask("Install `mlx-lm` now.")
+        m = mask("Install `package-name` now.")
         _, missing = m.restore("现在安装。")
         self.assertEqual(missing, [0])
 
@@ -334,6 +396,20 @@ class TestProtection(unittest.TestCase):
         restored, _ = m.restore("先 ⟪0⟫，然后 (2)，再 (3)。")
         self.assertIn("(2)", restored)
         self.assertIn("(3)", restored)
+
+    def test_more_than_999_placeholders_restore(self):
+        source = " ".join("`x`" for _ in range(1001))
+        m = mask(source)
+        self.assertEqual(len(m.spans), 1001)
+        restored, missing = m.restore(m.text)
+        self.assertEqual(restored, source)
+        self.assertEqual(missing, [])
+
+    def test_malformed_closing_bracket_restores(self):
+        m = mask("The $S$ price")
+        restored, missing = m.restore("价格为 ⟪0⟜")
+        self.assertEqual(missing, [])
+        self.assertIn("$S$", restored)
 
 
 class TestSegmentSplitting(unittest.TestCase):
@@ -355,7 +431,7 @@ class TestSegmentSplitting(unittest.TestCase):
 
     def test_cjk_join_has_no_stray_spaces(self):
         self.assertEqual(_join_zh(["你好", "世界"]), "你好世界")
-        self.assertEqual(_join_zh(["你好", "MLX"]), "你好 MLX")
+        self.assertEqual(_join_zh(["你好", "Python"]), "你好 Python")
 
     def test_context_uses_preceding_unit_not_cached_future_text(self):
         cfg = load_config()
@@ -374,11 +450,12 @@ class TestSegmentSplitting(unittest.TestCase):
 class TestEndToEnd(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="hy-test-"))
-        for name in ("inputs", "outputs", ".state"):
-            (self.tmp / name).mkdir()
+        (self.tmp / "inputs").mkdir()
+        (self.tmp / ".state").mkdir()
         shutil.copy(FIXTURES / "complex.md", self.tmp / "inputs" / "complex.md")
         shutil.copy(Path(__file__).resolve().parent.parent / "config.toml", self.tmp / "config.toml")
         self.cfg = load_config(root=self.tmp)
+        self.cfg.outputs_dir.mkdir(exist_ok=True)
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -495,6 +572,15 @@ class TestEndToEnd(unittest.TestCase):
         self.assertGreater(doc["cjk_chars"], 0)
         self.assertGreater(doc["sections"], 0)
         self.assertEqual(doc["title"], "Attention and Memory")
+        # The reader fetches documents from the directory named here.
+        self.assertEqual(library["dir"], self.cfg.output_dir)
+
+    def test_configured_title_overrides_the_heading(self):
+        self._run()
+        self.cfg.titles["complex.md"] = {"zh": "注意力", "en": "Attention, Revisited"}
+        doc = build_library(self.cfg)["documents"][0]
+        self.assertEqual(doc["title"], "Attention, Revisited")
+        self.assertEqual(doc["title_zh"], "注意力")
 
     def test_heading_styles(self):
         for style in ("italic-below", "inline", "none"):
@@ -537,7 +623,7 @@ class TestAssembler(unittest.TestCase):
     def test_header_records_provenance(self):
         header = build_header("T", "a.md", self.cfg, {"units": 3, "translated": 3})
         self.assertIn("hy-ebook-translator", header)
-        self.assertIn(self.cfg.model.repo, header)
+        self.assertIn("api model: unspecified", header)
 
 
 def _flat(text: str) -> str:

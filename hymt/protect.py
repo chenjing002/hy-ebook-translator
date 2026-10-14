@@ -5,8 +5,8 @@ code, inline LaTeX, link and image destinations, footnote references, raw HTML
 tags and bare URLs. Each is swapped for a numbered sentinel before the segment
 reaches the model, then restored afterwards.
 
-The sentinels use CJK-adjacent brackets (``⟪0⟫``) because Hy-MT2 copies those
-through reliably, and restoration is deliberately tolerant: the model sometimes
+The sentinels use CJK-adjacent brackets (``⟪0⟫``) because translation APIs tend
+to copy those through reliably, and restoration is tolerant when an API sometimes
 substitutes a visually similar bracket or inserts spaces.
 """
 
@@ -19,7 +19,7 @@ OPEN, CLOSE = "⟪", "⟫"
 # Strict form: our own sentinel plus the bracket pairs the model occasionally
 # substitutes for it. Narrow on purpose — a loose pattern would rewrite ordinary
 # prose like "(2)" into a protected span.
-RESTORE_RE = re.compile(r"[⟪⟦《«〈]\s*(\d{1,3})\s*[⟫⟧》»〉]")
+RESTORE_RE = re.compile(r"[⟪⟦《«〈]\s*(\d+)\s*[⟫⟧》»〉⟜⟩⟪]")
 # Last-resort form, applied only when a specific index went missing.
 LOOSE_TMPL = r"[\[(（<]\s*{idx}\s*[\])）>]"
 FULLWIDTH = str.maketrans("０１２３４５６７８９", "0123456789")
@@ -101,7 +101,7 @@ def mask(text: str) -> Masked:
 
 def _sub_outside_placeholders(pattern: re.Pattern[str], repl, text: str) -> str:
     """Apply `pattern` only to the regions of `text` that are not sentinels."""
-    guard = re.compile(re.escape(OPEN) + r"\d{1,3}" + re.escape(CLOSE))
+    guard = re.compile(re.escape(OPEN) + r"\d+" + re.escape(CLOSE))
     out: list[str] = []
     pos = 0
     for g in guard.finditer(text):
@@ -117,4 +117,4 @@ def strip_placeholders(text: str) -> str:
 
 
 def has_orphan_placeholder(text: str) -> bool:
-    return bool(re.search(re.escape(OPEN) + r"\s*\d", text) or re.search(r"\d\s*" + re.escape(CLOSE), text))
+    return any(ch in text for ch in "⟪⟫⟦⟧")

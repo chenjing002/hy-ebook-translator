@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "description": "AI-reviewed unresolved Markdown boundaries. Signatures contain no source prose.",
+  "files": {
+    "Financial Statement Analysis_ A Practitioner's Guide.md": {
+      "source_sha256": "e6c17d6b2db8e155e00ff227c0e5368cb0ee258fb3939da1787b7af7b92a8721",
+      "decisions": {
+        "559": {
+          "signature": "299df5104b200579b2778fe34e0c41bab0d15bd2e2b47fca3d904d10feff9fe1",
+          "action": "split"
+        },
+        "180": {
+          "signature": "0b3937ef72aa98ed09564abee60449d17f6e7ad24709341e097c57e16c14068a",
+          "action": "split"
+        },
+        "694": {
+          "signature": "aa1ba31dc085f088b0d3c13393e5ec54429b7f78038a2ff01c4c49aa83325504",
+          "action": "split"
+        },
+        "154": {
+          "signature": "922e8cfed3e797d9893a3eb2d25d1c9784f85e2ad43681cdee60936b7d6b98b7",
+          "action": "split"
+        },
+        "494": {
+          "signature": "44bffc709ae3dcd6906e633431138b58759eec6f99902865e8cf049d1f73658f",
+          "action": "split"
+        }
+      }
+    },
+    "How to lie with statistics.md": {
+      "source_sha256": "7886595e87dc71aa942f3a87b1784ecfba69c27e0a883abb38385a10c66e2985",
+      "decisions": {
+        "22": {
+          "signature": "e6577e53d79b82a87eb4746246bb1bd27c0359e6b42ac7fc29fbb2f7ae1be4e1",
+          "action": "split"
+        },
+        "23": {
+          "signature": "3332f306fb6972bfb5f32e139e9e6563ffe0ccb6dee895275998c9e18275a378",
+          "action": "split"
+        },
+        "21": {
+          "signature": "899ed926565879f06b8a00ce1852e00e102e029622e5a442947982c56d3d9a25",
+          "action": "split"
+        },
+        "10": {
+          "signature": "79b480af4ac426db2b60bbd45a76ef4fecca4bbfd5a1521d8e09e769c3d2ee18",
+          "action": "split"
+        },
+        "28": {
+          "signature": "fb62ba80304fa619953b7b241d4b5b8074cb51368ff1389c6dee116a342fe496",
+          "action": "split"
+        }
+      }
+    },
+    "Security Analysis seventh Edition.md": {
+      "source_sha256": "5bd0a4b59bfb0806820d73024c29d56f1f204d9032ab646fd75cf9fe4059df66",
+      "decisions": {
+        "318": {
+          "signature": "c39ce209b99e0d0cd11eb883d28d64b6d31970f9e3354813577631568085e974",
+          "action": "split"
+        },
+        "454": {
+          "signature": "7fce228f1de3a9659ff65f43e53850e78c3538b3472e94327a58688a0a4c62fb",
+          "action": "split"
+        },
+        "443": {
+          "signature": "9b350b17d460b1a65c28fcbc4775dfb0d0ce2b5c0340c3300b898eba5b70e083",
+          "action": "split"
+        },
+        "277": {
+          "signature": "cf40be34efd2c4497276f59665636bd86a5a88cf8bb13b9f9abb77c6abf4cf50",
+          "action": "split"
+        },
+        "243": {
+          "signature": "ae3b89dda95e1a2d56d079fbe8d35974bb90fb42ce601506f9311268393c071c",
+          "action": "join"
+        }
+      }
+    },
+    "Show Me the Money Writing Business.pdf.md": {
+      "source_sha256": "8e2e05fe6da8eacb65332f15fed14277c27835701bf79f6dc8df1f61eb7359ec",
+      "decisions": {
+        "62": {
+          "signature": "3e33a0d94a19635c6d8eb94c82b752fe6ba192feee9f6876d9d587c87e048751",
+          "action": "split"
+        },
+        "459": {
+          "signature": "b4bd013f066913140f296b491aba20566bbafa80abab696ca2eb66bede4da647",
+          "action": "join"
+        },
+        "322": {
+          "signature": "e1c528136027b611071cdb09b9119d1a65898b683e26194678b0daf2fa122d52",
+          "action": "join"
+        },
+        "677": {
+          "signature": "780aed669b6172c64284900d05818ca665a30d5b39b803db02581552638c80d3",
+          "action": "split"
+        },
+        "516": {
+          "signature": "e9af7951b90830f201d915976db61c6d7f7db5741ba2c62b6785d41a90dfa2dd",
+          "action": "split"
+        }
+      }
+    },
+    "Special Situation Investing Classes CBS Joel Greenblatees.md": {
+      "source_sha256": "947ea9ed49ddf1504f8b35842aef8746cff7187fae393a1c3b56b3a67839aaa1",
+      "decisions": {
+        "809": {
+          "signature": "688e284d552116406b5c74034c97364ae0860adabed8742a0158c6225d4c0885",
+          "action": "split"
+        },
+        "641": {
+          "signature": "bc58db1b9682bca4d247561be9d9dd7db95f4518957d30ccda89139e6c4a0d12",
+          "action": "keep"
+        },
+        "598": {
+          "signature": "21530e67789db6a5cf4b8cd872c2de6bd5c1686be3cb9dc45f59d1eab9f3d060",
+          "action": "split"
+        },
+        "642": {
+          "signature": "cdd62fbcf9ead83c0fc696ef2c2badeaa0134f2ccc7bf400b22ab8cf2734fa8b",
+          "action": "split"
+        },
+        "413": {
+          "signature": "80b6ff4b7c59fd89622e2d4b4e293d2041b828863b463569c44972dba38ee387",
+          "action": "split"
+        }
+      }
+    },
+    "浑水做空辉山乳业报告.md": {
+      "source_sha256": "cf2a26555b2c34da79c245311864326dd759d88e9f67a45ecd8e2714196b5abc",
+      "decisions": {
+        "6": {
+          "signature": "d660e6179ba71b33c0b966f9fed682ed5617fb0e5bd36f244db69be6655795f9",
+          "action": "keep"
+        },
+        "13": {
+          "signature": "55f9c568ccf02046041c3bb5162a177cb49425aa51d43200514c052a4746937b",
+          "action": "keep"
+        },
+        "5": {
+          "signature": "be789524298d5d339bd1084d08a771200ae490fb6d6ce8b91fbf9238061cf81f",
+          "action": "keep"
+        },
+        "7": {
+          "signature": "f66587d794a45e84600afff1f8cecbf0f3686ff1b2b0f5c201d6d4c5890d0967",
+          "action": "keep"
+        },
+        "10": {
+          "signature": "1ead6cc8231e3555944e9c8ba34001fda8afe5b236caa619c5f2e805efebddd9",
+          "action": "keep"
+        }
+      }
+    }
+  }
+}

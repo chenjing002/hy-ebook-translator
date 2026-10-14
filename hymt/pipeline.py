@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .assemble import assemble, build_header
 from .config import Config
-from .engine import Engine
+from .api_engine import APIEngine
 from .publish import PublishResult, publish as git_publish
 from .site import write_site
 from .state import slugify
@@ -57,15 +57,21 @@ def scan(cfg: Config, only: list[str] | None = None) -> list[Path]:
     )
     if not only:
         return files
-    wanted = {Path(o).name for o in only} | {Path(o).stem for o in only}
-    picked = [p for p in files if p.name in wanted or p.stem in wanted]
-    missing = wanted - {p.name for p in picked} - {p.stem for p in picked}
-    if missing and not picked:
-        raise SystemExit(f"no input matched: {', '.join(sorted(missing))}")
+    picked: list[Path] = []
+    missing: list[str] = []
+    for requested in only:
+        name = Path(requested).name
+        match = next((p for p in files if p.name == name or p.stem == name), None)
+        if match is None:
+            missing.append(requested)
+        elif match not in picked:
+            picked.append(match)
+    if missing:
+        raise SystemExit(f"no input matched: {', '.join(missing)}")
     return picked
 
 
-def translate_one(cfg: Config, engine: Engine, src: Path, *, force: bool = False,
+def translate_one(cfg: Config, engine: APIEngine, src: Path, *, force: bool = False,
                   quiet: bool = False) -> DocOutcome:
     if force:
         (cfg.state_dir / f"{slugify(src.stem)}.json").unlink(missing_ok=True)
@@ -89,7 +95,7 @@ def translate_one(cfg: Config, engine: Engine, src: Path, *, force: bool = False
     return DocOutcome(result=result, report=report)
 
 
-def run(cfg: Config, engine: Engine, *, only: list[str] | None = None,
+def run(cfg: Config, engine: APIEngine, *, only: list[str] | None = None,
         force: bool = False, do_publish: bool = True, push: bool = True,
         dry_run: bool = False, quiet: bool = False, strict: bool = False) -> RunReport:
     started = time.monotonic()

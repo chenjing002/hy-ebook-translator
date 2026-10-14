@@ -19,7 +19,8 @@ from .protect import OPEN
 CJK_RE = re.compile(r"[㐀-䶿一-鿿]")
 URL_RE = re.compile(r"\]\(\s*(<?[^)\s]+>?)")
 HEADING_RE = re.compile(r"^ {0,3}#{1,6}\s+\S", re.MULTILINE)
-PLACEHOLDER_RE = re.compile(r"[⟪⟦]\s*\d{1,3}\s*[⟫⟧]|^[ \t]*【\s*\d{1,3}\s*】", re.MULTILINE)
+PLACEHOLDER_RE = re.compile(r"^[ \t]*【\s*\d{1,3}\s*】", re.MULTILINE)
+SENTINEL_CHARS = "⟪⟫⟦⟧"
 ERROR, WARN, INFO = "error", "warn", "info"
 
 
@@ -99,9 +100,23 @@ def validate(source: Path, output: Path, cfg: Config,
 
     # 4. Protection sentinels must never reach the published file.
     leaked = PLACEHOLDER_RE.findall(out_text)
-    if leaked:
+    # A model can damage one bracket (for example ⟪0⟪). Count the bracket
+    # characters themselves as well as well-formed sentinels. Source text is
+    # reproduced in the bilingual file, so subtract its legitimate count.
+    sentinel_excess = sum(max(0, out_text.count(ch) - src_text.count(ch))
+                          for ch in SENTINEL_CHARS)
+    if leaked or sentinel_excess:
         report.add(ERROR, "leaked-placeholder",
-                   f"{len(leaked)} internal marker(s) left in output, e.g. {leaked[0]!r}")
+                   f"{len(leaked) + sentinel_excess} internal marker(s) left in output")
+
+    for tag in ("table", "tr", "td", "th"):
+        opens = len(re.findall(rf"<{tag}\b", out_text, re.IGNORECASE))
+        closes = len(re.findall(rf"</{tag}\s*>", out_text, re.IGNORECASE))
+        source_opens = len(re.findall(rf"<{tag}\b", src_text, re.IGNORECASE))
+        source_closes = len(re.findall(rf"</{tag}\s*>", src_text, re.IGNORECASE))
+        if source_opens == source_closes and opens != closes:
+            report.add(ERROR, "unbalanced-html-table",
+                       f"{tag} tags are unbalanced in output: {opens} open, {closes} close")
 
     # 5. Headings keep the document navigable.
     src_h, out_h = len(HEADING_RE.findall(src_text)), len(HEADING_RE.findall(out_text))
@@ -114,9 +129,20 @@ def validate(source: Path, output: Path, cfg: Config,
     for block in src_blocks:
         if block.kind != "html_table" or not any(u.translatable() for u in block.units):
             continue
+        # A table made entirely of ticker symbols has nothing to translate.
+        if all(re.fullmatch(r"\s*[A-Z0-9][A-Z0-9.$%+/-]{0,9}\s*", u.text)
+               or re.fullmatch(r"\s*[$€£¥]?\d[\d,.%+/-]*(?:\([a-z]\))?\s*", u.text)
+               for u in block.units):
+            continue
         marker = f"<!--en-->\n{block.raw.strip()}"
         at = out_text.find(marker)
-        target = out_text[:at].rstrip().rsplit("\n\n", 1)[-1] if at >= 0 else ""
+        target = ""
+        if at >= 0:
+            previous_marker = out_text.rfind("<!--en-->", 0, at)
+            table_start = out_text.rfind("<table", 0, at)
+            table_end = out_text.rfind("</table>", 0, at)
+            if table_start > previous_marker and table_end > table_start:
+                target = out_text[table_start:at]
         if at < 0 or "<table" not in target.lower() or not CJK_RE.search(target):
             report.add(ERROR, "untranslated-html-table",
                        f"HTML table has no Chinese counterpart: {block.raw[:70]!r}")

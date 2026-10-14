@@ -1,316 +1,150 @@
 # hy-ebook-translator
 
-A local Markdown translation and publishing pipeline for macOS. English goes in,
-bilingual Chinese–English Markdown comes out, and the result is published as a
-static reading site on GitHub Pages.
+Markdown book preparation, API translation, and bilingual publishing. The
+existing reading site is at <https://chenjing002.github.io/hy-ebook-translator/>.
 
-Translation runs entirely on-device with [Tencent Hunyuan's Hy-MT2](https://github.com/Tencent-Hunyuan/Hy-MT2)
-through [Apple MLX](https://github.com/ml-explore/mlx-lm). No text is sent to a
-cloud API.
-
-**Read the library →** <https://chenjing002.github.io/hy-ebook-translator/>
+The pipeline parses Markdown into typed blocks, sends only translatable prose
+to a configured API, rebuilds bilingual Markdown, validates it, and can publish
+the result to GitHub Pages. The translation API is **unconfigured by default**.
 
 ```
-inputs/*.md  →  parse  →  translate  →  assemble  →  validate  →  outputs/*.md  →  git push  →  Pages
+inputs/*.md → preprocess → preprocessed/*.md → translate → output/*.md → site
 ```
 
-## Quick start
+## Prepare converted Markdown
+
+PDF and EPUB conversions often leave one newline between natural paragraphs,
+wrap a sentence across lines, or merge a whole index into one Markdown block.
+Preview the rule-based repair:
 
 ```bash
-pip install -r requirements.txt    # or: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-./hy setup                         # download the model weights (resumable)
-cp samples/mlx-primer.md inputs/   # or drop in your own .md files
-./hy run                           # scan → translate → validate → save → publish
-./hy serve                         # preview the site at http://127.0.0.1:8000
+python3 scripts/preprocess_markdown.py inputs/
 ```
 
-`./hy run` is the whole workflow. Everything else is for inspecting or redoing
-one stage of it.
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `./hy setup` | Checks the machine and downloads weights into `models/`. Resumable — re-run it after an interruption and it continues from where it stopped. |
-| `./hy scan` | Lists `inputs/` with the state of each file: new, edited, or already translated. |
-| `./hy run [FILE…]` | The full pipeline. `--force` ignores the cache, `--no-publish` skips git, `--no-push` commits without pushing, `--strict` exits non-zero on validation errors. |
-| `./hy translate [FILE…]` | Translate and validate without touching git. |
-| `./hy validate` | Re-check the generated files against their sources. `--verbose` lists every warning. |
-| `./hy site` | Rebuild `library.json`, the shelf manifest. |
-| `./hy publish [--pages]` | Commit and push. `--pages` also enables GitHub Pages through the `gh` CLI. |
-| `./hy serve` | Serve the site locally. |
-| `./hy status` | Model, weights, direction, counts, git state. |
-| `./hy clean [FILE…]` | Discard cached translation state. `outputs/` is left alone. |
-
-Global flags override configuration for one run: `--model`, `--target-lang`,
-`--source-lang`, `--order`.
-
-## What the output looks like
-
-Each block appears twice — the Chinese translation first, then the English
-original:
-
-```markdown
-## 统一内存
-
-<!--en-->
-*Unified Memory*
-
-在大多数加速器上，数组要么位于主机内存，要么位于设备内存……
-
-<!--en-->
-On most accelerators an array lives in either host memory or device memory,
-and moving it between them is an explicit, expensive step.
-```
-
-The `<!--en-->` comments are invisible in every Markdown renderer, including
-GitHub's. The reading site uses them to style the original more quietly and to
-offer a 双语 / 中文 / EN toggle.
-
-Blocks with no prose — fenced code, display math, non-table raw HTML, horizontal
-rules, link definitions — are emitted **once**, byte for byte. HTML tables are
-translated cell by cell and shown in both languages; their tags, attributes,
-and numeric cells stay in place.
-
-## How structure is preserved
-
-Markdown is never handed to the model as raw text. Each document is parsed into
-typed blocks first, and only the prose is translated.
-
-**Block level.** `hymt/mdparse.py` splits the document into front matter,
-headings (ATX and setext), paragraphs, fenced code, display math (`$$`, `\[`,
-and `\begin{...}` environments), pipe tables, lists, blockquotes, HTML blocks,
-thematic breaks, footnote definitions and link reference definitions. Each block
-knows how to rebuild itself from translated segments, so a table keeps its
-column count and alignment row, a nested list keeps its indentation and
-markers, and a fenced code block inside a list item survives untouched.
-
-**Converted documents.** Markdown that came out of a PDF or EPUB converter
-breaks the usual assumptions: a whole `<table>…</table>` sits on one line, the
-next paragraph begins on the line below it, and the file may hold only a few
-dozen blank lines in several thousand. CommonMark ends an HTML block at the
-next blank line, which in such a file hands the rest of the chapter to the
-converter's table. The parser instead closes an HTML block as soon as the
-element that opened it is closed, matching by tag name so that the stray
-openers these converters emit — `<t>` standing in for an empty cell, a
-`<tbody>` with no end tag — cannot hold the block open. On a 937 KB book
-converted from PDF that is the difference between 50 headings recognised and
-all 226. For files with long converter paragraphs, run
-`python3 scripts/prepare_book.py inputs/your-book.md`. It adds breaks at
-sentence boundaries and separates line-oriented index entries, while keeping
-all non-whitespace source content and saving a copy under `.state/`.
-
-**Inline level.** Within a prose segment, `hymt/protect.py` replaces everything
-the model must not touch with a numbered sentinel: inline code, inline math,
-link and image destinations, reference labels, footnote references, autolinks,
-raw HTML tags, LaTeX commands, bare URLs and HTML entities. The model sees
-
-> Install ⟪0⟫ and read ⟪1⟫ for details.
-
-and the spans are restored afterwards. Restoration is tolerant of a model that
-substitutes a look-alike bracket, and strict about reporting a sentinel that
-never came back.
-
-**Verification.** Every response is checked before it is accepted, with a
-fallback ladder:
-
-```
-batch of segments  →  retry  →  one request per segment  →  segment without sentinels  →  keep the original
-```
-
-Anything that reaches the last rung is recorded as a warning and reported by
-`./hy validate`. Nothing is dropped silently.
-
-## Long documents
-
-Segments are packed into one request up to a token budget
-(`[translate].batch_token_budget`), each tagged with a `【n】` marker that the
-model is instructed to preserve. A segment longer than
-`[translate].max_unit_tokens` is split on sentence boundaries — abbreviations
-like `e.g.`, `Fig.` and `Dr.` are not treated as sentence ends — and rejoined
-without stray spaces between Chinese characters.
-
-Each batch is checkpointed to `.state/<document>.json` as soon as it completes.
-Interrupt a run at any point and the next one picks up where it left off.
-Translations are keyed by a hash of the **segment content**, not its position,
-so editing one paragraph of a long book re-translates that paragraph only, and
-reordering chapters costs nothing.
-
-The preceding translated segment is passed back to the model as background
-context (`[translate].context_units`), which keeps terminology consistent across
-a long document.
-
-## Validation
-
-`./hy validate` re-reads each generated file and compares it against its source:
-
-- every verbatim block present byte for byte
-- every original prose block still present
-- every link and image destination intact
-- no internal sentinel left in the output
-- heading count not reduced
-- Chinese actually present, in proportion to the prose
-- balanced inline code and emphasis markers
-- every warning the translator recorded
-
-## The reading site
-
-GitHub Pages serves the repository root. `index.html` is the library,
-`reader.html` renders one document, and the Markdown it fetches is the very same
-file in `outputs/` — there is only ever one copy of a translation.
-
-- Markdown via [marked](https://marked.js.org/), math via
-  [KaTeX](https://katex.org/), code via
-  [highlight.js](https://highlightjs.org/) — all pinned with subresource
-  integrity hashes.
-- Math is lifted out of the Markdown before it is parsed and rendered back
-  afterwards, using the same rule as `hymt/protect.py`: a `$…$` span may not be
-  padded with spaces unless what it holds is unmistakably TeX, and it is
-  neither long nor full of markup. KaTeX's own auto-render treats every `$` as
-  a delimiter, which in a book on financial statements renders the prose
-  between two dollar amounts as algebra. Extracting first also keeps Markdown
-  from eating `\$`, `&` and the subscripts in `$a_i$`.
-- Typography tuned for mixed scripts: a serif CJK stack at a generous line
-  height for the translation, a smaller quieter setting for the original.
-- Language toggle, text size, table of contents with scroll spy, reading
-  progress, light/dark, and a layout that works at phone width.
-- Images in Markdown are omitted from the reading page by default. Their source
-  references remain in the bilingual Markdown for fidelity and later repair.
-
-To enable Pages the first time:
+Save new copies while keeping the originals:
 
 ```bash
-./hy publish --pages          # needs the gh CLI, or do it in repository settings
+python3 scripts/preprocess_markdown.py inputs/ --output-dir preprocessed/
 ```
 
-## Configuration
+Use `--overwrite` with `--output-dir` to regenerate existing copies after a rule
+change. `preprocessed/` is local and git-ignored. The program changes only
+whitespace inside ordinary prose blocks; it verifies that every non-whitespace
+character remains in order. Code, math, tables, HTML, headings, and inline
+code/math/link spans are protected. It is safe to rerun: a second pass makes no
+further changes.
 
-`config.toml` holds the defaults; copy it to `config.local.toml` to override
-anything without touching the tracked file.
+The sampled AI review and its reproducible boundary decisions are in
+`docs/preprocess-sample-review.md` and
+`docs/preprocess-reviewed-decisions.json`. Add `--review-file
+docs/preprocess-reviewed-decisions.json` when generating the current copies.
+
+An optional local OpenAI-compatible chat endpoint can classify uncertain
+line boundaries. It receives only short excerpts around those boundaries and
+returns `split`, `join`, or `keep`, never replacement prose:
+
+```bash
+python3 scripts/preprocess_markdown.py inputs/ \
+  --ai-url http://127.0.0.1:1234/v1/chat/completions \
+  --ai-model YOUR_LOCAL_MODEL --ai-limit 128 \
+  --output-dir preprocessed/ --overwrite
+```
+
+No AI service is required for the rules pass. The limit is per file. Ambiguous
+boundaries outside the limit stay as they are. The separate
+`scripts/prepare_book.py` can still split exceptionally long paragraphs at
+sentence boundaries; it is a different, optional operation.
+
+## Translation API
+
+An OpenAI-compatible chat completions endpoint can be configured in
+`config.local.toml` (which is git-ignored):
 
 ```toml
-[model]
-repo = "mlx-community/Hy-MT2-7B-8bit"
-temperature = 0.7      # upstream-recommended sampling for the 1.8B/7B models
-top_p = 0.6
-top_k = 20
-repetition_penalty = 1.05
+[api]
+url = "https://YOUR_PROVIDER/v1/chat/completions"
+model = "YOUR_MODEL"
+key_env = "TRANSLATION_API_KEY"
 
-[translate]
-source_lang = "English"
-target_lang = "Simplified Chinese"
-prompt_lang = "zh"     # Hy-MT2's Chinese instruction template
-batch_token_budget = 640
-context_units = 1
-
-[layout]
-order = "zh-first"            # or "en-first"
-heading_style = "italic-below"   # or "inline", "none"
-markers = true
-
-[publish]
-repo = "chenjing002/hy-ebook-translator"
-include_inputs = false       # source ebooks stay local by default
+[paths]
+inputs = "preprocessed"
 ```
 
-### Choosing weights
+Set the named environment variable to the API key. The key is never stored in
+the config or repository. A remote endpoint must use HTTPS. The adapter uses
+approximate token counts to pack requests and reads actual usage from API
+responses when provided. No provider SDK or local model package is required.
 
-| Repository | Size | Resident memory | Notes |
-|---|---:|---:|---|
-| `mlx-community/Hy-MT2-7B` | 15 GB | ~16 GB | bf16 reference; needs 32 GB to be comfortable |
-| `mlx-community/Hy-MT2-7B-8bit` | 8 GB | ~8.5 GB | **default** — fits a 16 GB Mac with room |
-| `mlx-community/Hy-MT2-7B-4bit` | 4.5 GB | ~5 GB | fastest, slight loss on long technical prose |
-| `mlx-community/Hy-MT2-1.8B-4bit` | 1 GB | ~1.5 GB | useful for a quick smoke test |
-
-`./hy status` tells you what is downloaded and whether it fits.
-
-Weights land in `models/` (git-ignored) and are fetched with resumable `curl`
-rather than a Python downloader, because a multi-gigabyte download over a slow
-link needs resume above all else: interrupt `./hy setup` at any point and
-re-running it continues from the byte it stopped on.
-
-The same MLX conversions are published on HuggingFace and mirrored on
-`hf-mirror.com` and ModelScope. Throughput between them varies by an order of
-magnitude depending on time and location, so `./hy setup` measures all three on
-a real weight file and uses whichever is fastest:
-
-```
-→ measuring download endpoints …
-    https://hf-mirror.com              527 KB/s
-    https://huggingface.co             471 KB/s
-    https://www.modelscope.cn          292 KB/s
-  using https://hf-mirror.com — roughly 253 min at this rate
-```
-
-Pin one with `./hy setup --endpoint https://www.modelscope.cn`.
-
-If a large weight transfer repeatedly times out while small HTTP ranges work,
-run `python3 scripts/download_parallel.py --workers 16`. It downloads small
-resumable ranges in parallel and verifies each shard against Hugging Face's
-SHA-256 digest. After it finishes, `./hy setup` checks the remaining small
-metadata files.
-
-### Other language pairs
-
-The direction is configuration, not code:
+For the processed books, `config.hy-mt2.toml` selects Tencent TokenHub's
+Hy-MT2-Pro, then Plus, then Lite. It caps this project's recorded usage at
+990,000 tokens per model, below each 1,000,000-token free allowance. The
+credential remains in `TRANSLATION_API_KEY`; the config contains no key. It
+reads from `preprocessed/` and writes bilingual files to `output/`, preserving
+the source files. Short paragraphs are sent together with numbered markers to
+reduce prompt overhead; every returned paragraph is checked and cached
+separately in `.state/` for resuming after interruption. The request disables
+thinking. This project-local cap cannot see usage from other applications
+using the same Tencent account.
 
 ```bash
-./hy run --target-lang Japanese
-./hy run --source-lang Chinese --target-lang English
+export TRANSLATION_API_KEY="..."
+python3 -m hymt --config config.hy-mt2.toml translate
 ```
 
-Hy-MT2 is multilingual; `hymt/engine.py` carries the Chinese and English
-instruction templates and the language-name table used to fill them.
-
-## Layout
-
-```
-inputs/          English Markdown you provide          (not published by default)
-outputs/         bilingual Markdown, same filenames    (published)
-models/          downloaded weights                    (git-ignored)
-.state/          resume checkpoints and segment cache   (git-ignored)
-index.html       the library page
-reader.html      the document reader
-assets/          stylesheet and front-end script
-library.json     generated shelf manifest
-samples/         a document to try the pipeline on
-hymt/
-  cli.py         command line interface
-  config.py      configuration loading
-  download.py    resumable weight downloader
-  engine.py      MLX model wrapper and Hy-MT2 prompt templates
-  mdparse.py     Markdown block parser and rebuilder
-  protect.py     inline sentinel protection
-  translate.py   batching, retries, fallback ladder
-  assemble.py    bilingual layout
-  validate.py    structural checks
-  state.py       content-addressed resume state
-  site.py        library manifest
-  publish.py     git and GitHub Pages
-  pipeline.py    the workflow
-tests/           43 tests, no weights required
-```
-
-## Tests
+Running the same command again reuses completed paragraphs. `output/` is the
+published document directory: its bilingual Markdown is what the reading site
+serves. If all three project caps are reached, the command stops and keeps its
+checkpoints; increasing the cap later does not invalidate cached translations.
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+python3 -m hymt --input-dir preprocessed scan
+python3 -m hymt --input-dir preprocessed translate "book.md"
+python3 -m hymt --input-dir preprocessed run --no-publish
 ```
 
-The suite runs without model weights: a fake engine speaks the same protocol as
-Hy-MT2 (segment markers in, segment markers out), which is what allows the
-parser, the sentinel protection, the batching fallbacks, the assembler, the
-validator and the resume logic to be tested end to end. It includes a
-block-by-block round-trip proof that the parser can rebuild
-`tests/fixtures/complex.md` exactly.
+The command is also installed as `hy` by `pip install -e .`. `run` publishes by
+default; use `--no-publish` to keep the generated output local. API settings can
+also be supplied for one command with global `--api-url`, `--api-model`, and
+`--api-key-env` flags before the subcommand.
 
-## Requirements
+## Markdown handling
 
-- macOS on Apple Silicon (MLX is Metal-only)
-- Python 3.10+
-- `curl` for downloads; `git` to publish; `gh` only for `--pages`
+`hymt/mdparse.py` recognises headings, paragraphs, code fences, display math,
+tables, lists, blockquotes, HTML, footnotes, and link definitions. Code, math,
+non-table HTML, and link definitions pass through verbatim. HTML table text is
+translated cell by cell. `hymt/protect.py` masks inline code, math, link
+destinations, HTML tags, URLs, and entities before a translation request, then
+restores them after the response.
 
-## Licence
+The translator batches segments, checks every marker and placeholder, retries
+invalid responses, and saves segment-level progress in `.state/`. The API URL,
+model priority, and translation settings are part of the cache identity. The assembler
+puts the translation and original beside each other, with invisible
+`<!--en-->` markers for the reader's language toggle. The validator checks
+that original blocks, links, headings, and translated content remain present.
 
-Pipeline code: MIT. The Hy-MT2 weights follow the upstream Tencent Hunyuan
-licence; translated documents inherit the licence of their source material.
+## Other commands
+
+| Command | Purpose |
+|---|---|
+| `python3 -m hymt scan` | List source files and translation state |
+| `python3 -m hymt validate` | Check existing outputs against sources |
+| `python3 -m hymt site` | Rebuild `library.json` |
+| `python3 -m hymt publish` | Commit and push the reading site |
+| `python3 -m hymt serve` | Preview the site locally |
+| `python3 -m hymt status` | Show API, document, and repository status |
+| `python3 -m hymt clean` | Remove segment cache, preserving outputs |
+
+`config.toml` holds defaults; `config.local.toml` holds private overrides.
+`inputs/`, `preprocessed/` and `.state/` are git-ignored. `output/` holds the
+published bilingual files; `[paths].outputs` names it, and `library.json`
+records that name so the reader fetches from the right place. Python 3.11+ is
+required; runtime dependencies are from the standard library. Run the test
+suite with:
+
+```bash
+python3 -m unittest discover -s tests -q
+```
+
+Pipeline code: MIT. Translated documents inherit the licence of their source
+material.
