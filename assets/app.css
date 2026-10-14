@@ -22,7 +22,10 @@
     "Microsoft YaHei", system-ui, sans-serif;
   --body: var(--serif-latin), var(--serif-cjk);
 
-  --measure: 36rem;
+  --measure: 38rem;        /* one column of prose, when only one is shown */
+  --page: 104rem;          /* the parallel reading area at its widest */
+  --rail: 15.5rem;         /* the table of contents, docked on wide screens */
+  --col-gap: clamp(1.5rem, 3.4vw, 3.5rem);
   --reader-scale: 1;
 }
 
@@ -63,7 +66,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--body);
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.7;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -152,7 +155,7 @@ a:hover { border-bottom-color: var(--accent); }
 
 /* ── library ────────────────────────────────────────────────────────────── */
 
-.wrap { max-width: 60rem; margin: 0 auto; padding: 0 16px 72px; }
+.wrap { max-width: 72rem; margin: 0 auto; padding: 0 clamp(16px, 2.4vw, 32px) 72px; }
 
 .masthead { padding: 72px 0 36px; border-bottom: 1px solid var(--rule); margin-bottom: 36px; }
 .masthead h1 { font-size: clamp(2rem, 6vw, 2.9rem); margin: 0 0 10px; letter-spacing: -0.01em; font-weight: 600; }
@@ -199,10 +202,17 @@ a:hover { border-bottom-color: var(--accent); }
 
 /* ── reader ─────────────────────────────────────────────────────────────── */
 
-.reader { max-width: var(--measure); margin: 0 auto; padding: 48px 16px 160px; }
+.reader {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 44px clamp(16px, 2.6vw, 44px) 160px;
+}
 
-.reader-title { margin: 0 0 48px; padding-bottom: 20px; border-bottom: 1px solid var(--rule); }
-.reader-title h1 { margin: 0; font-size: clamp(1.7rem, 5vw, 2.3rem); font-weight: 600; line-height: 1.35; }
+/* One language at a time needs one comfortable measure, not the whole page. */
+body[data-lang="zh"] .reader, body[data-lang="en"] .reader { max-width: calc(var(--measure) + 6rem); }
+
+.reader-title { margin: 0 0 44px; padding-bottom: 20px; border-bottom: 1px solid var(--rule); }
+.reader-title h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.3rem); font-weight: 600; line-height: 1.35; }
 
 article {
   font-size: calc(1rem * var(--reader-scale));
@@ -229,51 +239,88 @@ article h4, article h5, article h6 { font-size: 1em; color: var(--ink-soft); }
 
 article p { margin: 0 0 1.15em; }
 
-/* The original-language block: quieter, with a hairline rule down the side. */
+/* ── parallel text ──────────────────────────────────────────────────────────
+   Each `.pair` is one row of the parallel reading: the translation in the left
+   column, the original in the right, both starting on the same line. The row
+   is as tall as the longer of the two, so no paragraph can push the two
+   languages out of step further down the page. */
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: var(--col-gap);
+  align-items: start;
+  margin: 0 0 1.25em;
+}
+
+/* The row owns the spacing between paragraphs; its two cells sit flush. */
+.pair > * { margin-top: 0; margin-bottom: 0; }
+
+/* The original reads as a peer of the translation, not as a footnote: the same
+   size, a quieter colour, and the Latin serif at its own line-height. */
 article .src {
   font-family: var(--serif-latin);
-  font-size: 0.9em;
-  line-height: 1.68;
+  font-size: 0.95em;
+  line-height: 1.78;
   color: var(--ink-soft);
-  border-left: 2px solid var(--rule);
-  padding-left: 1em;
-  margin-bottom: 1.9em;
   letter-spacing: 0;
+}
+
+/* A hairline centred in the gutter: the negative margin reaches into the gap,
+   the padding puts the text back on its column. */
+.pair > .src {
+  margin-left: calc(var(--col-gap) / -2);
+  padding-left: calc(var(--col-gap) / 2);
+  border-left: 1px solid var(--rule-soft);
 }
 
 article .src em:only-child { font-style: normal; color: var(--ink-faint); font-size: 0.97em; }
 article .src :last-child { margin-bottom: 0; }
 
+/* A table, listing or figure squeezed into half a page is worse than one that
+   gives up the columns, so those rows stack and keep the full width. */
+.pair.stacked { grid-template-columns: minmax(0, 1fr); }
+.pair.stacked > .src {
+  margin: 0.7em 0 0;
+  padding-left: 1em;
+  border-left: 2px solid var(--rule);
+}
+
 /* Language modes. `.tr` is a translated block, `.src` its original; blocks that
-   carry neither class (code, math, rules, images) are shown in every mode. */
+   carry neither class (code, math, rules, images) are shown in every mode. One
+   language on its own gets the whole row, with no rule to divide it from. */
 body[data-lang="zh"] article .src { display: none; }
 body[data-lang="en"] article .tr { display: none; }
-body[data-lang="en"] article .src {
-  border-left: 0;
+body[data-lang="zh"] .pair, body[data-lang="en"] .pair { grid-template-columns: minmax(0, 1fr); }
+body[data-lang="zh"] .pair > .src, body[data-lang="en"] .pair > .src {
+  margin-left: 0;
   padding-left: 0;
-  font-size: 1em;
-  line-height: 1.8;
-  color: var(--ink);
-  margin-bottom: 1.15em;
+  border-left: 0;
+}
+body[data-lang="en"] article .src { font-size: 1em; line-height: 1.8; color: var(--ink); }
+
+/* A bilingual heading holds both languages so only one enters the outline, and
+   sits on the same two columns as the prose underneath it. */
+.bi {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: var(--col-gap);
+  align-items: baseline;
 }
 
-/* A bilingual heading holds both languages so only one enters the outline. */
-article .h-en {
-  display: block;
-  margin-top: 0.4em;
+.h-en {
   font-family: var(--serif-latin);
-  font-size: 0.58em;
+  font-size: 0.88em;
   font-weight: 400;
   font-style: normal;
-  letter-spacing: 0.03em;
-  color: var(--ink-faint);
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
 }
 
-article .h-en em { font-style: normal; }
-body[data-lang="zh"] article .h-en { display: none; }
-body[data-lang="en"] article .h-zh { display: none; }
-body[data-lang="en"] article .h-en {
-  margin-top: 0;
+.h-en em { font-style: normal; }
+body[data-lang="zh"] .h-en, body[data-lang="en"] .h-zh { display: none; }
+body[data-lang="zh"] .bi, body[data-lang="en"] .bi { grid-template-columns: minmax(0, 1fr); }
+body[data-lang="en"] .h-en {
   font-size: 1em;
   font-weight: inherit;
   letter-spacing: inherit;
@@ -295,15 +342,17 @@ article hr { border: 0; border-top: 1px solid var(--rule); margin: 2.6em 0; }
 
 article img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 1.6em auto; }
 
+/* The scroller is the block in the flow; the table fills it and overflows into
+   it only when its columns genuinely need more room. */
+article .scroll { overflow-x: auto; margin: 1.6em 0; }
+
 article table {
   width: 100%;
   border-collapse: collapse;
-  margin: 1.6em 0;
+  margin: 0;
   font-family: var(--sans);
   font-size: 0.86em;
   line-height: 1.6;
-  display: block;
-  overflow-x: auto;
 }
 
 article th, article td { padding: 8px 12px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
@@ -356,7 +405,17 @@ article .footnotes { margin-top: 3em; padding-top: 1.2em; border-top: 1px solid 
 #toc[data-open="true"] { transform: translateX(0); }
 #toc ol { list-style: none; margin: 0; padding: 0; }
 #toc li { margin: 1px 0; }
-#toc a { display: block; padding: 5px 8px; border-radius: 6px; border: 0; color: var(--ink-soft); line-height: 1.5; }
+#toc a {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
 #toc a:hover { background: var(--rule-soft); color: var(--ink); }
 #toc a.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 #toc .lvl-3 a { padding-left: 22px; font-size: 12px; }
@@ -375,28 +434,51 @@ article .footnotes { margin-top: 3em; padding-top: 1.2em; border-top: 1px solid 
 #scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
 
 @media (min-width: 1180px) {
+  /* Dock the contents to the left edge: the text then has the whole of the
+     rest of the window, and no overlay has to be opened to navigate. Only the
+     reader has a rail — the shelf is the page that carries `data-lang`. */
+  body[data-lang] { padding-left: var(--rail); }
+  body[data-toc="none"] { padding-left: 0; }
   #toc {
     transform: none;
-    border-left: 0;
-    width: 260px;
-    left: max(0px, calc(50vw - var(--measure) / 2 - 300px));
+    width: var(--rail);
+    left: 0;
     right: auto;
-    background: transparent;
-    padding-top: 110px;
+    border-left: 0;
+    border-right: 1px solid var(--rule);
+    background: var(--paper);
+    padding: 104px 14px 48px 22px;
   }
   #toc-btn, #scrim { display: none; }
 }
 
+/* Two columns of running text need room; below this they stack, and the
+   original goes back to being set off by a rule down its side. */
+@media (max-width: 900px) {
+  .pair, .bi { grid-template-columns: minmax(0, 1fr); }
+  .pair { margin-bottom: 1.5em; }
+  .pair > .src {
+    margin: 0.6em 0 0;
+    padding-left: 0.9em;
+    border-left: 2px solid var(--rule);
+    font-size: 0.92em;
+    line-height: 1.7;
+  }
+  .h-en { display: block; margin-top: 0.35em; font-size: 0.62em; color: var(--ink-faint); }
+  body[data-lang="en"] .h-en { margin-top: 0; font-size: 1em; }
+}
+
 @media (max-width: 600px) {
-  body { font-size: 16px; }
+  body { font-size: 17px; }
   .masthead { padding: 48px 0 28px; }
-  .reader { padding: 32px 16px 120px; }
+  .reader { padding: 28px 16px 120px; }
   .bar { padding: 8px 12px; gap: 8px; }
   .bar .doc-title { display: none; }
 }
 
 @media print {
   .bar, #toc, #progress, #scrim, #toc-btn { display: none; }
+  body { padding-left: 0; }
   .reader { max-width: none; padding: 0; }
 }
 

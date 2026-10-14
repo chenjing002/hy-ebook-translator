@@ -151,18 +151,14 @@ async function initReader() {
   const math = extractMath(stripProvenance(markdown));
   const rendered = document.createElement('template');
   rendered.innerHTML = marked.parse(math.text);
-  // Converted ebooks can contain expired image URLs. Keep the Markdown file
-  // intact, but omit images from the reading page before inserting the DOM.
-  for (const img of rendered.content.querySelectorAll('img')) {
-    const parent = img.parentElement;
-    img.remove();
-    if (parent?.tagName === 'P' && !parent.textContent.trim() && !parent.children.length) {
-      parent.remove();
-    }
-  }
   article.replaceChildren(rendered.content);
 
+  // Wrap tables first, so the wrapper is the block the pairing sees; pair the
+  // two languages before anything is removed, as each `<!--en-->` has to still
+  // be followed by the block it marks.
+  wrapTables(article);
   tagOriginals(article);
+  stripImages(article);
   renderMath(article, math.spans);
   highlight(article);
   const title = buildTitle(article, file);
@@ -180,7 +176,8 @@ function stripProvenance(md) {
 }
 
 /* Every original-language block is preceded by an invisible <!--en--> comment.
-   Promote the block that follows into `.src` so CSS can style and toggle it. */
+   Promote the block that follows into `.src` so CSS can style and toggle it,
+   and join it to the translation it belongs to. */
 function tagOriginals(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
   const marks = [];
@@ -192,19 +189,79 @@ function tagOriginals(root) {
     while (node && node.nodeType !== Node.ELEMENT_NODE) node = node.nextSibling;
     mark.remove();
     if (!node) continue;
-    const heading = node.previousElementSibling;
-    if (heading && /^H[1-6]$/.test(heading.tagName)) {
-      foldHeading(heading, node);
+    const translation = node.previousElementSibling;
+    if (translation && /^H[1-6]$/.test(translation.tagName)) {
+      foldHeading(translation, node);
     } else {
       node.classList.add('src');
-      if (heading) heading.classList.add('tr');
+      if (translation) pairUp(translation, node);
     }
   }
 }
 
+/* A converted table is given the full width of the column it sits in, and its
+   own scroller when it needs more than that — a financial table with ten
+   columns should not set the width of the page it is on. */
+function wrapTables(root) {
+  for (const table of root.querySelectorAll('table')) {
+    const scroller = document.createElement('div');
+    scroller.className = 'scroll';
+    table.replaceWith(scroller);
+    scroller.append(table);
+  }
+}
+
+/* Converted ebooks carry image URLs that have since expired. The Markdown
+   file keeps them; the reading page drops them, along with whatever that
+   leaves empty — a bare paragraph, half a row, or a row of nothing. */
+function stripImages(root) {
+  for (const img of root.querySelectorAll('img')) {
+    const parent = img.parentElement;
+    img.remove();
+    if (parent?.tagName === 'P' && !parent.textContent.trim() && !parent.children.length) {
+      parent.remove();
+    }
+  }
+  for (const pair of root.querySelectorAll('.pair')) {
+    const kept = [...pair.children].filter(
+      (cell) => cell.textContent.trim() || cell.firstElementChild);
+    for (const cell of [...pair.children]) {
+      if (!kept.includes(cell)) cell.remove();
+    }
+    if (!kept.length) pair.remove();
+    else if (kept.length === 1) pair.replaceWith(kept[0]);
+  }
+}
+
+/* Blocks that need the whole width to be readable at all. A financial table
+   or a code listing squeezed into half a page is worse than one that gives up
+   the parallel columns, so a row holding either of these stacks instead. */
+const WIDE_SELECTOR = 'table, pre';
+
+function holdsWide(el) {
+  return el.matches(WIDE_SELECTOR) || el.querySelector(WIDE_SELECTOR) !== null;
+}
+
+/* The translation and its original become the two cells of one row, so each
+   paragraph stays level with its counterpart however long either one runs.
+   CSS decides whether the cells sit side by side or one above the other. */
+function pairUp(translation, original) {
+  // Only a plain block is a translation. Anything else means this original has
+  // no counterpart of its own, and must not be folded into the row above it.
+  if (translation.classList.contains('pair') || translation.classList.contains('src')) return;
+  translation.classList.add('tr');
+  const pair = document.createElement('div');
+  pair.className = 'pair';
+  if (holdsWide(translation) || holdsWide(original)) pair.classList.add('stacked');
+  translation.replaceWith(pair);
+  pair.append(translation, original);
+}
+
 /* Move both languages inside the heading element itself: a single heading keeps
-   the document outline clean, and each language can be shown on its own. */
+   the document outline clean, and each language can be shown on its own. The
+   heading is then laid out on the same two columns as the prose below it. */
 function foldHeading(heading, echo) {
+  heading.classList.add('bi');
   const zh = document.createElement('span');
   zh.className = 'h-zh';
   while (heading.firstChild) zh.appendChild(heading.firstChild);
@@ -401,6 +458,8 @@ function buildToc(article) {
   if (!toc) return;
   const headings = [...article.querySelectorAll('h1, h2, h3, h4')];
   if (headings.length < 2) {
+    // Nothing to navigate: give the rail's width back to the text.
+    document.body.dataset.toc = 'none';
     toc.remove();
     const btn = document.getElementById('toc-btn');
     if (btn) btn.remove();
