@@ -1,1 +1,6 @@
 # Runtime uses only the Python standard library.
+#
+# Optional, for converting ebooks:
+#   pymupdf                      PDF conversion (scripts/pdf_to_markdown.py)
+#   pyobjc-framework-Vision      scanned-PDF OCR on macOS (scripts/ocr_pdf_to_markdown.py)
+#   pyobjc-framework-Quartz

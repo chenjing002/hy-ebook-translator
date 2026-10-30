@@ -1,11 +1,24 @@
 {
-  "generated": "2026-10-30T02:02:56",
+  "generated": "2026-10-30T02:47:10",
   "dir": "output",
   "title": "双语书架",
   "subtitle": "Bilingual Library",
   "api_model": null,
   "direction": "English → Simplified Chinese",
   "documents": [
+    {
+      "file": "深圳市志·第三产业卷.md",
+      "title": "Shenzhen Municipal Gazetteer: Tertiary Industry Volume",
+      "title_zh": "深圳市志·第三产业卷",
+      "excerpt": "第4页图",
+      "cjk_chars": 781073,
+      "words": 2967,
+      "sections": 1029,
+      "minutes": 1966,
+      "bytes": 2963682,
+      "updated": "2026-10-30",
+      "updated_ts": 1793353629
+    },
     {
       "file": "The Art of Doing Science and Engineering.md",
       "title": "The Art of Doing Science and Engineering: Learning to Learn",

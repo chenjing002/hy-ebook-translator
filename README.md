@@ -44,6 +44,39 @@ remove running headers, footers and page numbers, undo end-of-line
 hyphenation, and rejoin paragraphs cut by a page break. A converted PDF
 usually still benefits from the whitespace repair described next.
 
+## OCR a scanned PDF (macOS)
+
+A scanned book has no text layer worth keeping, or one produced by a weak
+OCR engine. On macOS, `scripts/ocr_pdf_to_markdown.py` reads every page with
+Apple's Vision text recogniser (the engine behind Live Text) and rebuilds the
+document from the geometry of the recognised lines:
+
+```bash
+pip install pymupdf pyobjc-framework-Vision pyobjc-framework-Quartz
+python3 scripts/ocr_pdf_to_markdown.py scan.pdf -o "inputs/Book Title.md"
+python3 scripts/ocr_pdf_to_markdown.py scan.pdf --pages 100-120 -o /tmp/sample.md
+```
+
+Headings come from the PDF outline (matched to the page where the title is
+actually printed, since bookmarks are often a page off) and from Chinese
+chapter, section and `一、` patterns; paragraphs from first-line indents and
+line geometry, joined across page breaks; tables from three or more rows of
+aligned cells, with stacked header rows merged and a table continued on the
+next page joined to the first; photographs and charts are cropped from
+text-free gaps that contain ink and saved to `<name>_files/`. Running
+headers, page numbers, printed contents pages, text read off signs inside
+photographs and pages bound in twice are dropped. Per-page recognition is
+cached in `.state/ocr/<pdf stem>/`, so an interrupted run resumes and the
+layout pass can be repeated in seconds after a rule change. `--dpi` (default
+220), `--langs` (default `zh-Hans,en-US`), `--workers` and `--keep-contents`
+adjust the run. On this machine Vision needs about 0.7 s per page; three
+worker processes convert a 1,200-page book in roughly 7 minutes.
+
+Vision and the PaddleOCR-based RapidOCR engine read the same test pages with
+the same accuracy on prose; Vision was chosen because it runs several times
+faster and returns one box per table cell, which the table reconstruction
+depends on.
+
 A converted book can also be published without translation: copy the Markdown
 file and its `_files/` directory into `output/`, give it a `[titles]` entry in
 `config.toml`, and run `python3 -m hymt publish`. The reader shows a

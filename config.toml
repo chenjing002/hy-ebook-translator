@@ -48,3 +48,5 @@ include_inputs = false
 "浑水做空辉山乳业报告.md" = { zh = "中国辉山乳业（6863 HK）：几近归零", en = "China Huishan Dairy (6863 HK): A Near Zero" }
 # Published in its original language only; both labels are the English title.
 "The Art of Doing Science and Engineering.md" = { zh = "The Art of Doing Science and Engineering: Learning to Learn", en = "The Art of Doing Science and Engineering: Learning to Learn" }
+# Published in Chinese only (OCR of a scanned PDF); both labels are the Chinese title.
+"深圳市志·第三产业卷.md" = { zh = "深圳市志·第三产业卷", en = "Shenzhen Municipal Gazetteer: Tertiary Industry Volume" }
