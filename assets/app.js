@@ -81,9 +81,13 @@ async function initLibrary() {
       }
       const meta = document.createElement('div');
       meta.className = 'meta';
+      // A document published in its original language only has no
+      // Chinese characters to count; its length is given in words instead.
+      const length = doc.cjk_chars || !doc.words
+        ? `${fmt(doc.cjk_chars)} 汉字` : `${fmt(doc.words)} words`;
       for (const text of [
         `${doc.sections} 节`,
-        `${fmt(doc.cjk_chars)} 汉字`,
+        length,
         `${doc.minutes} min read`,
         doc.updated,
       ]) {
@@ -137,9 +141,10 @@ async function initReader() {
   }
 
   const dir = await docsDir();
+  const docUrl = new URL(`${dir}/${encodePath(file)}`, location.href);
   let markdown;
   try {
-    const res = await fetch(`${dir}/${encodePath(file)}`, { cache: 'no-cache' });
+    const res = await fetch(docUrl, { cache: 'no-cache' });
     if (!res.ok) throw new Error(res.status);
     markdown = await res.text();
   } catch {
@@ -158,7 +163,7 @@ async function initReader() {
   // be followed by the block it marks.
   wrapTables(article);
   tagOriginals(article);
-  stripImages(article);
+  stripImages(article, docUrl);
   renderMath(article, math.spans);
   highlight(article);
   const title = buildTitle(article, file);
@@ -211,11 +216,21 @@ function wrapTables(root) {
   }
 }
 
-/* Converted ebooks carry image URLs that have since expired. The Markdown
-   file keeps them; the reading page drops them, along with whatever that
+/* An image that ships with the document — one the converter copied out of
+   an EPUB or PDF into `<doc>_files/` — is kept, and its relative path is
+   resolved against the document rather than against this page. Converted
+   ebooks also carry image URLs on hosts that have since expired; the Markdown
+   file keeps them, but the reading page drops them, along with whatever that
    leaves empty — a bare paragraph, half a row, or a row of nothing. */
-function stripImages(root) {
+function stripImages(root, docUrl) {
   for (const img of root.querySelectorAll('img')) {
+    const src = img.getAttribute('src') || '';
+    if (src && !/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src)) {
+      img.src = new URL(src, docUrl).href;
+      img.loading = 'lazy';
+      continue;
+    }
+    if (/^data:/i.test(src)) continue;
     const parent = img.parentElement;
     img.remove();
     if (parent?.tagName === 'P' && !parent.textContent.trim() && !parent.children.length) {

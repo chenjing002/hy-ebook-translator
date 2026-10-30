@@ -1,11 +1,24 @@
 {
-  "generated": "2026-10-14T04:44:41",
+  "generated": "2026-10-30T02:02:56",
   "dir": "output",
   "title": "双语书架",
   "subtitle": "Bilingual Library",
   "api_model": null,
   "direction": "English → Simplified Chinese",
   "documents": [
+    {
+      "file": "The Art of Doing Science and Engineering.md",
+      "title": "The Art of Doing Science and Engineering: Learning to Learn",
+      "title_zh": "The Art of Doing Science and Engineering: Learning to Learn",
+      "excerpt": "",
+      "cjk_chars": 0,
+      "words": 122265,
+      "sections": 34,
+      "minutes": 556,
+      "bytes": 721419,
+      "updated": "2026-10-30",
+      "updated_ts": 1793350950
+    },
     {
       "file": "Security Analysis seventh Edition.md",
       "title": "Security Analysis, Seventh Edition",

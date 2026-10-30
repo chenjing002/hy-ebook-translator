@@ -1,0 +1,301 @@
+"""Tests for the EPUB and PDF to Markdown converters."""
+
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+from hymt import pdf2md
+from hymt.epub2md import convert_epub, parse_html, Renderer
+from hymt.pdf2md import Para, join_lines, merge_pages, pdftotext_pages, strip_furniture
+
+ROOT = Path(__file__).resolve().parent.parent
+
+CONTAINER = """<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>"""
+
+OPF = """<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="id">x</dc:identifier>
+    <dc:title id="t1">Main Title</dc:title>
+    <meta refines="#t1" property="title-type">main</meta>
+    <dc:title id="t2">A Subtitle</dc:title>
+    <meta refines="#t2" property="title-type">subtitle</meta>
+    <dc:creator>Ada Lovelace</dc:creator>
+    <dc:language>en</dc:language>
+  </metadata>
+  <manifest>
+    <item id="nav" href="Text/nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="c1" href="Text/ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="c2" href="Text/ch2.xhtml" media-type="application/xhtml+xml"/>
+    <item id="extra" href="Text/extra.xhtml" media-type="application/xhtml+xml"/>
+    <item id="pic" href="Images/fig 1.png" media-type="image/png"/>
+  </manifest>
+  <spine>
+    <itemref idref="nav"/>
+    <itemref idref="c1"/>
+    <itemref idref="c2"/>
+    <itemref idref="extra" linear="no"/>
+  </spine>
+</package>"""
+
+NAV = """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
+<nav epub:type="toc"><h1>Contents</h1><ol><li><a href="ch1.xhtml">One</a></li></ol></nav>
+</body></html>"""
+
+CH1 = """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head>
+<title>ignored</title><style>p{}</style></head><body>
+<h1 class="ChapterHeading"><span class="ChapterHead">1</span>
+   <span class="ChapterHead">Orientation</span></h1>
+<p><a id="_idIndexMarker001"/>Plain <i class="Italic">italic </i>text, with
+<a href="https://example.com/x">a link</a> and <a href="ch2.xhtml#f">a cross-ref</a>.</p>
+<p>Price $5 and *stars* and snake_case and 2 &lt; 3 &amp; more.</p>
+<p>Variables <i class="CoMo11 Italic">x</i><i class="CoMo11 Italic Subscript">i</i> and
+<span class="AllCaps">wwii</span> and E = mc<sup>2</sup>.</p>
+<div class="EquDiv SB img"><img alt="" class="im" src="../Images/fig%201.png"/></div>
+<figure><img src="../Images/fig 1.png" alt="Figure"/><figcaption>Figure 1 — caption</figcaption></figure>
+<blockquote class="Epigraph">Quoted <b>bold</b> words.</blockquote>
+<ol start="3"><li>Third</li><li>Fourth<ul><li>nested</li></ul></li></ol>
+<table><thead><tr><th>y</th><th>x | z</th></tr></thead>
+<tbody><tr><td>2</td><td>17</td></tr><tr><td>3</td><td>27</td></tr></tbody></table>
+<table><tr><td rowspan="2">a</td><td><i>b</i> &lt; 2 * <b>c</b></td></tr><tr><td>c</td></tr></table>
+<pre><code class="language-python">print("hi")
+</code></pre>
+<p>Note<a epub:type="noteref" href="#fn1">1</a>.</p>
+<aside epub:type="footnote" id="fn1"><p>The note.</p></aside>
+<p>1. Not a list</p>
+<p>Missing <img src="../Images/nope.png"/> image.</p>
+</body></html>"""
+
+CH2 = """<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>Two</h1><p>Second.</p></body></html>"""
+EXTRA = """<html xmlns="http://www.w3.org/1999/xhtml"><body><p>NONLINEAR</p></body></html>"""
+
+PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+                    "0000000d49444154789c636000010000050001") + b"\x0d\x0a\x2d\xb4"
+
+
+def build_epub(path: Path) -> None:
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        zf.writestr("META-INF/container.xml", CONTAINER)
+        zf.writestr("OEBPS/content.opf", OPF)
+        zf.writestr("OEBPS/Text/nav.xhtml", NAV)
+        zf.writestr("OEBPS/Text/ch1.xhtml", CH1)
+        zf.writestr("OEBPS/Text/ch2.xhtml", CH2)
+        zf.writestr("OEBPS/Text/extra.xhtml", EXTRA)
+        zf.writestr("OEBPS/Images/fig 1.png", PNG)
+
+
+class TestEpub(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.epub = self.tmp / "book.epub"
+        build_epub(self.epub)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def convert(self, **kw):
+        return convert_epub(self.epub, images_dir=self.tmp / "book_files", images_rel="book_files", **kw)
+
+    def test_title_block_and_heading_demotion(self):
+        md = self.convert().markdown
+        self.assertTrue(md.startswith("<!-- Generated by hy-ebook-translator epub2md"))
+        self.assertIn("\n# Main Title: A Subtitle\n\n*Ada Lovelace*\n", md)
+        self.assertIn("\n## 1 Orientation\n", md)
+        self.assertIn("\n## Two\n", md)
+        self.assertNotIn("Contents", md)          # the nav document is skipped
+        self.assertNotIn("NONLINEAR", md)         # and so are non-linear items
+        self.assertNotIn("ignored", md)           # <title> and <style> never leak
+
+    def test_without_title_keeps_levels(self):
+        md = self.convert(add_title=False, keep_nav=True, include_nonlinear=True).markdown
+        self.assertIn("\n# 1 Orientation\n", md)
+        self.assertIn("NONLINEAR", md)
+        self.assertNotIn("# Main Title", md)
+
+    def test_inline_markup(self):
+        md = self.convert().markdown
+        self.assertIn("Plain *italic* text, with [a link](https://example.com/x) and a cross-ref.", md)
+        self.assertIn("Price \\$5 and \\*stars\\* and snake\\_case and 2 \\< 3 & more.", md)
+        self.assertIn("Variables *x<sub>i</sub>* and WWII and E = mc<sup>2</sup>.", md)
+        self.assertIn("> Quoted **bold** words.", md)
+        self.assertIn("\n\\1. Not a list\n", md)
+
+    def test_images_figures_and_missing(self):
+        result = self.convert()
+        md = result.markdown
+        self.assertIn("![](book_files/fig%201.png)", md)
+        self.assertIn("![Figure](book_files/fig%201.png)\n\n*Figure 1 — caption*", md)
+        self.assertEqual([p.name for p in result.images], ["fig 1.png"])
+        self.assertTrue((self.tmp / "book_files" / "fig 1.png").exists())
+        self.assertIn("Missing image.", md)
+        self.assertTrue(any("nope.png" in w for w in result.warnings))
+
+    def test_no_images(self):
+        result = convert_epub(self.epub, images_dir=None)
+        self.assertNotIn("![", result.markdown)
+        self.assertEqual(result.images, [])
+        self.assertFalse((self.tmp / "book_files").exists())
+
+    def test_lists_tables_code_footnotes(self):
+        md = self.convert().markdown
+        self.assertIn("3. Third\n4. Fourth\n   - nested", md)
+        self.assertIn("| y | x \\| z |\n| --- | --- |\n| 2 | 17 |\n| 3 | 27 |", md)
+        self.assertIn('<table>\n<tr><td rowspan="2">a</td><td><em>b</em> &lt; 2 * <strong>c</strong></td></tr>\n'
+                      '<tr><td>c</td></tr>\n</table>', md)
+        self.assertIn('```python\nprint("hi")\n```', md)
+        self.assertIn("Note[^fn1].", md)
+        self.assertIn("[^fn1]: The note.", md)
+
+    def test_script(self):
+        out = self.tmp / "out"
+        cmd = [sys.executable, str(ROOT / "scripts" / "epub_to_markdown.py"),
+               str(self.epub), "--output-dir", str(out)]
+        run = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("book.epub → ", run.stdout)
+        self.assertTrue((out / "book.md").exists())
+        self.assertTrue((out / "book_files" / "fig 1.png").exists())
+        again = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(again.returncode, 1)
+        self.assertIn("--overwrite", again.stderr)
+
+    def test_renderer_tolerates_broken_markup(self):
+        root = parse_html("<body><p>Unclosed <b>bold<p>Next</div></p></body>")
+        md = Renderer("x.xhtml", None).render(root)
+        self.assertIn("Unclosed **bold**", md)
+        self.assertIn("Next", md)
+
+
+class TestPdfReconstruction(unittest.TestCase):
+    def test_join_lines_mends_hyphenation(self):
+        self.assertEqual(join_lines(["informa-", "tion theory", "is", "fun"]), "information theory is fun")
+        self.assertEqual(join_lines(["well-", "Known"]), "well- Known")
+        self.assertEqual(join_lines(["  a  ", "", "b"]), "a b")
+
+    def test_running_headers_and_page_numbers(self):
+        pages = []
+        for n in range(1, 7):
+            pages.append([
+                Para(f"THE BOOK TITLE", top=20, bottom=30),
+                Para(f"Body text of page {n}.", top=100, bottom=400),
+                Para(f"{n}", top=780, bottom=790),
+            ])
+        cleaned = strip_furniture(pages, [800.0] * 6)
+        self.assertTrue(all(len(p) == 1 for p in cleaned))
+        self.assertEqual(cleaned[2][0].text, "Body text of page 3.")
+
+    def test_short_documents_keep_everything(self):
+        pages = [[Para("Title", top=20, bottom=30), Para("Body.", top=100, bottom=200)]] * 2
+        self.assertEqual(strip_furniture(pages, [800.0] * 2), pages)
+
+    def test_merge_pages_rejoins_split_paragraphs(self):
+        pages = [
+            [Para("A sentence that runs over the"), Para("Heading", "h2")],
+            [Para("page boundary and ends here."), Para("Next paragraph.")],
+        ]
+        # The heading sits between the halves on the page, so no merge.
+        merged = merge_pages(pages)
+        self.assertEqual([p.text for p in merged][:3],
+                         ["A sentence that runs over the", "Heading", "page boundary and ends here."])
+        pages = [[Para("A sentence that runs over the")], [Para("page boundary and ends here.")]]
+        merged = merge_pages(pages)
+        self.assertEqual([p.text for p in merged], ["A sentence that runs over the page boundary and ends here."])
+        pages = [[Para("A full sentence.")], [Para("Another one.")]]
+        self.assertEqual(len(merge_pages(pages)), 2)
+
+    def test_pdftotext_pages(self):
+        text = ("Chapter 1 Beginnings\n\nFirst para-\ngraph here.\nStill the same.\n\n"
+                "2.1 A numbered section\n\nBody $5.\n\f\nSecond page.\n\f")
+        pages = pdftotext_pages(text)
+        self.assertEqual(len(pages), 2)
+        kinds = [(p.kind, p.text) for p in pages[0]]
+        self.assertEqual(kinds, [
+            ("h2", "Chapter 1 Beginnings"),
+            ("p", "First paragraph here. Still the same."),
+            ("h3", "2.1 A numbered section"),
+            ("p", "Body \\$5."),
+        ])
+        md = pdf2md.to_markdown(merge_pages(pages), title="T", authors=["A"], source="x.pdf",
+                                add_title=True, provenance=False)
+        self.assertTrue(md.startswith("# T\n\n*A*\n\n## Chapter 1 Beginnings\n\n"))
+        self.assertIn("### 2.1 A numbered section", md)
+
+
+@unittest.skipIf(pdf2md.fitz is None, "PyMuPDF not installed")
+class TestPdfWithPyMuPDF(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.pdf = self.tmp / "sample.pdf"
+        fitz = pdf2md.fitz
+        doc = fitz.open()
+        for n in range(1, 6):
+            page = doc.new_page(width=400, height=600)
+            page.insert_text((40, 30), "Running Header", fontsize=8)
+            if n == 1:
+                page.insert_text((40, 80), "Big Heading", fontsize=20, fontname="helv")
+            y = 120
+            for i in range(3):
+                page.insert_text((40, y), f"Body line {i} on page {n}.", fontsize=11)
+                y += 14
+            page.insert_text((40, 300), "Second block continues past the", fontsize=11)
+            page.insert_text((200, 580), str(n), fontsize=9)
+        doc.set_metadata({"title": "Sample Title", "author": "Jane Doe; John Roe"})
+        doc.save(str(self.pdf))
+        doc.close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_headings_furniture_and_metadata(self):
+        result = pdf2md.convert_pdf(self.pdf, images_dir=self.tmp / "sample_files",
+                                    images_rel="sample_files", backend="pymupdf")
+        md = result.markdown
+        self.assertEqual(result.backend, "pymupdf")
+        self.assertEqual(result.pages, 5)
+        self.assertEqual(result.authors, ["Jane Doe", "John Roe"])
+        self.assertIn("# Sample Title\n\n*Jane Doe, John Roe*", md)
+        self.assertIn("## Big Heading", md)
+        self.assertNotIn("Running Header", md)
+        self.assertIn("Body line 0 on page 1. Body line 1 on page 1. Body line 2 on page 1.", md)
+        for n in range(1, 6):
+            self.assertNotRegex(md, rf"\n{n}\n")
+
+    def test_script(self):
+        cmd = [sys.executable, str(ROOT / "scripts" / "pdf_to_markdown.py"), str(self.pdf), "--no-images"]
+        run = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue((self.tmp / "sample.md").exists())
+        self.assertIn("[pymupdf]", run.stdout)
+
+
+@unittest.skipIf(shutil.which("pdftotext") is None or pdf2md.fitz is None, "needs pdftotext and PyMuPDF")
+class TestPdfWithPdftotext(unittest.TestCase):
+    def test_text_backend(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            fitz = pdf2md.fitz
+            doc = fitz.open()
+            page = doc.new_page()
+            page.insert_text((50, 72), "Chapter 1 Start", fontsize=12)
+            page.insert_text((50, 100), "Hello from pdftotext.", fontsize=11)
+            doc.save(str(tmp / "t.pdf"))
+            doc.close()
+            result = pdf2md.convert_pdf(tmp / "t.pdf", images_dir=None, backend="pdftotext",
+                                        add_title=False, provenance=False)
+            self.assertEqual(result.backend, "pdftotext")
+            self.assertIn("## Chapter 1 Start", result.markdown)
+            self.assertIn("Hello from pdftotext.", result.markdown)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    unittest.main()

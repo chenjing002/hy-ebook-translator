@@ -46,3 +46,5 @@ include_inputs = false
 "Special Situation Investing Classes CBS Joel Greenblatees.md" = { zh = "特殊情况投资课程（哥大商学院·乔尔·格林布拉特）", en = "Special Situation Investing Classes" }
 "Show Me the Money Writing Business.pdf.md" = { zh = "给我看钱：商业财经写作", en = "Show Me the Money: Writing Business and Economics Stories" }
 "浑水做空辉山乳业报告.md" = { zh = "中国辉山乳业（6863 HK）：几近归零", en = "China Huishan Dairy (6863 HK): A Near Zero" }
+# Published in its original language only; both labels are the English title.
+"The Art of Doing Science and Engineering.md" = { zh = "The Art of Doing Science and Engineering: Learning to Learn", en = "The Art of Doing Science and Engineering: Learning to Learn" }

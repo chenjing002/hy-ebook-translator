@@ -8,8 +8,47 @@ to a configured API, rebuilds bilingual Markdown, validates it, and can publish
 the result to GitHub Pages. The translation API is **unconfigured by default**.
 
 ```
-inputs/*.md → preprocess → preprocessed/*.md → translate → output/*.md → site
+inputs/*.epub, *.pdf → convert → inputs/*.md → preprocess → preprocessed/*.md
+                                → translate → output/*.md → site
 ```
+
+## Convert an EPUB or PDF to Markdown
+
+Two converters turn an ebook into one Markdown file with its images in a
+`<name>_files/` directory beside it, referenced relatively so the pair can be
+moved together:
+
+```bash
+python3 scripts/epub_to_markdown.py book.epub -o "inputs/Book Title.md"
+python3 scripts/pdf_to_markdown.py book.pdf -o "inputs/Book Title.md"
+```
+
+With `--output-dir` instead of `-o`, several files are converted at once and
+each Markdown file takes the ebook's name. Both add a title heading and author
+line from the file's metadata (`--title` overrides it, `--no-title` omits it),
+and both write a provenance comment the reader hides. `--no-images` drops the
+images; `--overwrite` replaces an existing Markdown file.
+
+The EPUB converter uses only the standard library. It follows the spine order,
+skips the navigation document and non-linear items, keeps headings, emphasis,
+lists, quotes, tables, figures, code, footnotes and external links, and renders
+publisher class names such as `Italic`, `Semibold`, `Subscript` and `AllCaps`.
+When the book's chapters are `h1` headings they move down one level so the
+title stays alone at the top. A table with spanning cells is kept as HTML.
+
+The PDF converter reads with PyMuPDF (`pip install pymupdf`) when installed,
+and otherwise with poppler's `pdftotext`. PyMuPDF gives headings by font size,
+bold and italic, detected tables and extracted images; `pdftotext` gives text
+only, with headings limited to "Chapter N" and numbered-section lines. Both
+remove running headers, footers and page numbers, undo end-of-line
+hyphenation, and rejoin paragraphs cut by a page break. A converted PDF
+usually still benefits from the whitespace repair described next.
+
+A converted book can also be published without translation: copy the Markdown
+file and its `_files/` directory into `output/`, give it a `[titles]` entry in
+`config.toml`, and run `python3 -m hymt publish`. The reader shows a
+single-language document as it is; `hy validate` will report that document as
+untranslated, which is accurate.
 
 ## Prepare converted Markdown
 

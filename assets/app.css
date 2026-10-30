@@ -341,6 +341,12 @@ article li > p { margin: 0.3em 0; }
 article hr { border: 0; border-top: 1px solid var(--rule); margin: 2.6em 0; }
 
 article img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 1.6em auto; }
+/* Equations and charts from a converted ebook are often black ink on a
+   transparent background, which disappears on a dark page: give them paper. */
+:root[data-theme="dark"] article img { background: #fff; padding: 0.5em; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) article img { background: #fff; padding: 0.5em; }
+}
 
 /* The scroller is the block in the flow; the table fills it and overflows into
    it only when its columns genuinely need more room. */
